@@ -20,9 +20,11 @@ export const getUserProfile = async (req, res) => {
             bio: user.bio,
             phone: user.phone,
             address: user.address,
+            category: user.category,
             website: user.website,
             coverImage: user.coverImage,
             portfolio: user.portfolio,
+            location: user.location
         });
     } else {
         res.status(404);
@@ -44,6 +46,7 @@ export const updateUserProfile = async (req, res) => {
         user.bio = req.body.bio || user.bio;
         user.phone = req.body.phone || user.phone;
         user.address = req.body.address || user.address;
+        user.category = req.body.category || user.category;
         user.website = req.body.website || user.website;
         user.coverImage = req.body.coverImage || user.coverImage;
         user.portfolio = req.body.portfolio || user.portfolio;
@@ -60,6 +63,7 @@ export const updateUserProfile = async (req, res) => {
             email: updatedUser.email,
             role: updatedUser.role,
             avatar: updatedUser.avatar,
+            location: updatedUser.location,
             token: generateToken(updatedUser._id),
         });
     } else {

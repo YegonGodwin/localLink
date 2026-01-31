@@ -34,6 +34,9 @@ const userSchema = new mongoose.Schema(
             enum: ["ACTIVE", "SUSPENDED"],
             default: "ACTIVE",
         },
+        location: {
+            type: String,
+        },
         // Provider Profile Fields
         tagline: {
             type: String,
@@ -45,6 +48,9 @@ const userSchema = new mongoose.Schema(
             type: String,
         },
         address: {
+            type: String,
+        },
+        category: {
             type: String,
         },
         website: {

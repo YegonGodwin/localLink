@@ -17,6 +17,7 @@ export const login = async (req, res) => {
             email: user.email,
             role: user.role,
             avatar: user.avatar,
+            location: user.location,
             token: generateToken(user._id),
         });
     } else {
@@ -29,7 +30,7 @@ export const login = async (req, res) => {
 // @route   POST /api/auth/register
 // @access  Public
 export const register = async (req, res) => {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, location } = req.body;
 
     const { errors, isValid } = validateRegistration({ name, email, password });
 
@@ -50,6 +51,7 @@ export const register = async (req, res) => {
         email,
         password,
         role: role || "CONSUMER",
+        location,
     });
 
     if (user) {
@@ -58,6 +60,7 @@ export const register = async (req, res) => {
             name: user.name,
             email: user.email,
             role: user.role,
+            location: user.location,
             token: generateToken(user._id),
         });
     } else {

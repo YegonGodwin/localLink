@@ -8,11 +8,14 @@ export interface User {
   avatar: string;
   verified?: boolean;
   status?: 'ACTIVE' | 'SUSPENDED';
+  location?: string;
+  password?: string;
   // Provider Profile Fields
   tagline?: string;
   bio?: string;
   phone?: string;
   address?: string;
+  category?: string;
   website?: string;
   coverImage?: string;
   portfolio?: string[];

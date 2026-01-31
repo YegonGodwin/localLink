@@ -9,17 +9,19 @@ import { ProviderProfile } from '../consumer/ProviderProfile';
 import { User, Service } from '../../types';
 
 interface ProviderProps {
+  user: User;
   currentView: string;
+  onUpdate: (updatedUser: User) => void;
 }
 
-export const ProviderDashboard: React.FC<ProviderProps> = ({ currentView }) => {
+export const ProviderDashboard: React.FC<ProviderProps> = ({ user, currentView, onUpdate }) => {
   const [isCreatingService, setIsCreatingService] = useState(false);
   const [previewData, setPreviewData] = useState<Service | null>(null);
 
   // Reset internal state if main view changes
   useEffect(() => {
-     if (currentView !== 'services') setIsCreatingService(false);
-     if (currentView !== 'profile') setPreviewData(null);
+    if (currentView !== 'services') setIsCreatingService(false);
+    if (currentView !== 'profile') setPreviewData(null);
   }, [currentView]);
 
   if (currentView === 'services') {
@@ -40,20 +42,24 @@ export const ProviderDashboard: React.FC<ProviderProps> = ({ currentView }) => {
   if (currentView === 'profile') {
     if (previewData) {
       return (
-        <ProviderProfile 
-          service={previewData} 
+        <ProviderProfile
+          service={previewData}
           onBack={() => setPreviewData(null)}
           bookingCart={[]}
-          toggleCartItem={() => {}}
+          toggleCartItem={() => { }}
           showBookingModal={false}
-          setShowBookingModal={() => {}}
-          onPaymentSuccess={() => {}}
+          setShowBookingModal={() => { }}
+          onPaymentSuccess={() => { }}
         />
       );
     }
-    return <EditProfile onPreview={(data) => setPreviewData(data)} />;
+    return <EditProfile
+      user={user}
+      onPreview={(data) => setPreviewData(data)}
+      onUpdate={onUpdate}
+    />;
   }
 
   // Default to Dashboard
-  return <DashboardHome />;
+  return <DashboardHome user={user} />;
 };

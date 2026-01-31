@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Service } from '../../types';
+import { Service, User } from '../../types';
 import { Button, Modal } from '../Layout';
 import { Check } from 'lucide-react';
 
@@ -10,10 +10,11 @@ import { ProviderProfile } from './ProviderProfile';
 import { Payments } from './Payments';
 
 interface ConsumerProps {
+  user: User;
   currentView: string;
 }
 
-export const ConsumerDashboard: React.FC<ConsumerProps> = ({ currentView }) => {
+export const ConsumerDashboard: React.FC<ConsumerProps> = ({ user, currentView }) => {
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [bookingCart, setBookingCart] = useState<string[]>([]);
   const [showBookingModal, setShowBookingModal] = useState(false);
@@ -27,46 +28,46 @@ export const ConsumerDashboard: React.FC<ConsumerProps> = ({ currentView }) => {
   }, [currentView]);
 
   const toggleCartItem = (serviceId: string) => {
-    setBookingCart(prev => 
-      prev.includes(serviceId) 
+    setBookingCart(prev =>
+      prev.includes(serviceId)
         ? prev.filter(id => id !== serviceId)
         : [...prev, serviceId]
     );
   };
 
   const handlePaymentSuccess = () => {
-      setBookingCart([]);
-      setShowBookingModal(false);
+    setBookingCart([]);
+    setShowBookingModal(false);
   };
 
   // View Routing Logic
   if (currentView === 'dashboard') {
-      return <DashboardHome />;
+    return <DashboardHome user={user} />;
   }
 
   if (currentView === 'requests') {
-      return <ServiceRequests />;
+    return <ServiceRequests />;
   }
 
   if (currentView === 'payments') {
-      return <Payments />;
+    return <Payments />;
   }
 
   if (currentView === 'explore') {
-      if (selectedService) {
-          return (
-            <ProviderProfile 
-              service={selectedService} 
-              onBack={() => { setSelectedService(null); setBookingCart([]); }}
-              bookingCart={bookingCart}
-              toggleCartItem={toggleCartItem}
-              showBookingModal={showBookingModal}
-              setShowBookingModal={setShowBookingModal}
-              onPaymentSuccess={handlePaymentSuccess}
-            />
-          );
-      }
-      return <ExploreServices onSelectService={setSelectedService} />;
+    if (selectedService) {
+      return (
+        <ProviderProfile
+          service={selectedService}
+          onBack={() => { setSelectedService(null); setBookingCart([]); }}
+          bookingCart={bookingCart}
+          toggleCartItem={toggleCartItem}
+          showBookingModal={showBookingModal}
+          setShowBookingModal={setShowBookingModal}
+          onPaymentSuccess={handlePaymentSuccess}
+        />
+      );
+    }
+    return <ExploreServices onSelectService={setSelectedService} />;
   }
 
   // Fallback
