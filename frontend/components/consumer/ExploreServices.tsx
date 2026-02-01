@@ -1,18 +1,53 @@
 import React, { useState, useEffect } from 'react';
 import { Service, User } from '../../types';
 import { Button, cn } from '../Layout';
-import { MOCK_SERVICES } from '../../constants';
-import { Search, MapPin, Filter, ChevronDown, Heart, Star } from 'lucide-react';
+import { Search, MapPin, Filter, ChevronDown, Heart, Star, MessageSquare, Loader2 } from 'lucide-react';
 
 interface ExploreServicesProps {
    user?: User;
    onSelectService: (service: Service) => void;
+   onMessageProvider: (userId: string) => void;
 }
 
-export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelectService }) => {
+export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelectService, onMessageProvider }) => {
+   const [services, setServices] = useState<Service[]>([]);
+   const [loading, setLoading] = useState(true);
    const [searchQuery, setSearchQuery] = useState('');
    const [location, setLocation] = useState(user?.location || 'New York, NY');
    const [isLocating, setIsLocating] = useState(false);
+
+   const fetchServices = async () => {
+      try {
+         setLoading(true);
+         const res = await fetch('/api/services');
+         const data = await res.json();
+         if (res.ok) {
+            // Map backend structure to frontend Service interface
+            const mappedServices = data.map((s: any) => ({
+               id: s._id,
+               providerId: s.provider?._id || '',
+               providerName: s.provider?.name || 'Local Pro',
+               providerAvatar: s.provider?.avatar || 'https://randomuser.me/api/portraits/lego/1.jpg',
+               title: s.title,
+               description: s.description,
+               category: s.category,
+               price: s.price,
+               rating: s.rating || 0,
+               reviews: s.reviews || 0,
+               image: s.image
+            }));
+            setServices(mappedServices);
+         }
+      } catch (error) {
+         console.error('Error fetching services:', error);
+      } finally {
+         setLoading(false);
+      }
+   };
+
+   useEffect(() => {
+      fetchServices();
+   }, []);
 
    useEffect(() => {
       const fetchLocation = async () => {
@@ -52,10 +87,14 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
       }
    }, [user?.location]);
 
-   const filteredServices = MOCK_SERVICES.filter(s =>
-      s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.category.toLowerCase().includes(searchQuery.toLowerCase())
-   );
+   const [selectedCategory, setSelectedCategory] = useState('All');
+
+   const filteredServices = services.filter(s => {
+      const matchesSearch = s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+         s.category.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesCategory = selectedCategory === 'All' || s.category === selectedCategory;
+      return matchesSearch && matchesCategory;
+   });
 
    return (
       <div className="space-y-8">
@@ -97,12 +136,13 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
             </button>
             <div className="h-6 w-px bg-slate-800"></div>
             <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide flex-1">
-               {['All', 'Plumbing', 'Cleaning', 'Electrical', 'Gardening', 'Moving'].map((cat, i) => (
+               {['All', 'Plumbing', 'Cleaning', 'Electrical', 'Gardening', 'Moving'].map((cat) => (
                   <button
                      key={cat}
+                     onClick={() => setSelectedCategory(cat)}
                      className={cn(
                         "px-4 py-2 rounded-full border text-sm whitespace-nowrap transition-colors",
-                        i === 0 ? "bg-slate-800 text-white border-slate-700 font-medium" : "bg-transparent border-slate-800 text-slate-400 hover:border-slate-600 hover:text-slate-200"
+                        selectedCategory === cat ? "bg-slate-800 text-white border-slate-700 font-medium" : "bg-transparent border-slate-800 text-slate-400 hover:border-slate-600 hover:text-slate-200"
                      )}
                   >
                      {cat}
@@ -123,7 +163,18 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
 
          {/* Provider Cards Grid */}
          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
-            {filteredServices.map((service) => (
+            {loading ? (
+               <div className="col-span-full py-20 flex flex-col items-center justify-center text-slate-500 gap-4">
+                  <Loader2 size={40} className="animate-spin text-blue-500" />
+                  <p>Finding top-rated services...</p>
+               </div>
+            ) : filteredServices.length === 0 ? (
+               <div className="col-span-full py-20 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col items-center justify-center text-center p-8">
+                  <Search size={48} className="text-slate-700 mb-4" />
+                  <h3 className="text-xl font-bold text-white mb-2">No results found</h3>
+                  <p className="text-slate-400 max-w-sm">Try adjusting your filters or searching for something else.</p>
+               </div>
+            ) : filteredServices.map((service) => (
                <div key={service.id} className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden hover:border-slate-700 transition-all group relative">
                   {/* Image Section */}
                   <div className="h-48 relative overflow-hidden">
@@ -150,18 +201,29 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
                         <img src={service.providerAvatar} alt={service.providerName} className="w-10 h-10 rounded-full border-2 border-slate-800" />
                      </div>
 
+                     <div className="flex gap-2">
+                        <Button
+                           variant="secondary"
+                           className="flex-1 py-2 text-xs bg-slate-800/50 hover:bg-slate-800"
+                           onClick={() => onMessageProvider(service.providerId)}
+                        >
+                           <MessageSquare size={14} className="mr-2" /> Message
+                        </Button>
+                        <Button
+                           variant="primary"
+                           className="flex-1 py-2 text-xs"
+                           onClick={() => onSelectService(service)}
+                        >
+                           View Profile
+                        </Button>
+                     </div>
+
                      <div className="border-t border-slate-800 mt-4 pt-4 flex items-center justify-between">
                         <div className="flex items-center gap-1.5">
                            <Star size={16} className="text-yellow-400 fill-yellow-400" />
                            <span className="font-bold text-white">{service.rating}</span>
                            <span className="text-slate-500 text-sm">({service.reviews})</span>
                         </div>
-                        <button
-                           onClick={() => onSelectService(service)}
-                           className="text-blue-500 text-sm font-medium hover:text-blue-400 transition-colors"
-                        >
-                           View Profile
-                        </button>
                      </div>
                   </div>
                </div>

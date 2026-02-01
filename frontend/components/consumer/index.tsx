@@ -12,9 +12,10 @@ import { Payments } from './Payments';
 interface ConsumerProps {
   user: User;
   currentView: string;
+  onMessageProvider: (userId: string) => void;
 }
 
-export const ConsumerDashboard: React.FC<ConsumerProps> = ({ user, currentView }) => {
+export const ConsumerDashboard: React.FC<ConsumerProps> = ({ user, currentView, onMessageProvider }) => {
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [bookingCart, setBookingCart] = useState<string[]>([]);
   const [showBookingModal, setShowBookingModal] = useState(false);
@@ -46,7 +47,7 @@ export const ConsumerDashboard: React.FC<ConsumerProps> = ({ user, currentView }
   }
 
   if (currentView === 'requests') {
-    return <ServiceRequests />;
+    return <ServiceRequests onMessageProvider={onMessageProvider} />;
   }
 
   if (currentView === 'payments') {
@@ -64,10 +65,11 @@ export const ConsumerDashboard: React.FC<ConsumerProps> = ({ user, currentView }
           showBookingModal={showBookingModal}
           setShowBookingModal={setShowBookingModal}
           onPaymentSuccess={handlePaymentSuccess}
+          onMessageProvider={onMessageProvider}
         />
       );
     }
-    return <ExploreServices user={user} onSelectService={setSelectedService} />;
+    return <ExploreServices user={user} onSelectService={setSelectedService} onMessageProvider={onMessageProvider} />;
   }
 
   // Fallback

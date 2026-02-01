@@ -12,18 +12,20 @@ interface ProviderProfileProps {
   showBookingModal: boolean;
   setShowBookingModal: (show: boolean) => void;
   onPaymentSuccess: () => void;
+  onMessageProvider: (userId: string) => void;
 }
 
 type PaymentStep = 'summary' | 'phone' | 'processing' | 'success';
 
-export const ProviderProfile: React.FC<ProviderProfileProps> = ({ 
-  service: selectedService, 
-  onBack, 
-  bookingCart, 
-  toggleCartItem, 
-  showBookingModal, 
+export const ProviderProfile: React.FC<ProviderProfileProps> = ({
+  service: selectedService,
+  onBack,
+  bookingCart,
+  toggleCartItem,
+  showBookingModal,
   setShowBookingModal,
-  onPaymentSuccess
+  onPaymentSuccess,
+  onMessageProvider
 }) => {
   const [activeTab, setActiveTab] = useState('About');
   const [paymentStep, setPaymentStep] = useState<PaymentStep>('summary');
@@ -32,7 +34,7 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
 
   // Find all services offered by this provider
   const providerServices = MOCK_SERVICES.filter(s => s.providerId === selectedService.providerId);
-  
+
   // Calculate cart details
   const selectedServicesList = providerServices.filter(s => bookingCart.includes(s.id));
   const totalAmount = selectedServicesList.reduce((sum, item) => sum + item.price, 0);
@@ -48,7 +50,7 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
   const handlePay = () => {
     if (!phoneNumber) return;
     setPaymentStep('processing');
-    
+
     // Simulate STK Push delay
     let progress = 0;
     const interval = setInterval(() => {
@@ -76,213 +78,219 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
 
       {/* Hero Image */}
       <div className="h-64 md:h-80 w-full rounded-2xl overflow-hidden relative">
-         <img src={selectedService.image} alt={selectedService.title} className="w-full h-full object-cover" />
-         <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent opacity-80"></div>
+        <img src={selectedService.image} alt={selectedService.title} className="w-full h-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent opacity-80"></div>
       </div>
 
       {/* Header Profile Info */}
       <div className="relative -mt-20 px-4 md:px-8 flex flex-col md:flex-row items-end md:items-center gap-6">
-         <div className="w-32 h-32 rounded-xl bg-slate-800 border-4 border-slate-950 overflow-hidden shadow-2xl flex-shrink-0">
-            <img src={selectedService.providerAvatar} alt={selectedService.providerName} className="w-full h-full object-cover" />
-         </div>
-         <div className="flex-1 mb-2">
-            <h1 className="text-3xl font-bold text-white mb-1">{selectedService.providerName}</h1>
-            <p className="text-slate-400 text-lg mb-2">{selectedService.title}</p>
-            <div className="flex items-center gap-2">
-               <div className="flex items-center text-yellow-400">
-                  <Star size={16} fill="currentColor" />
-                  <span className="ml-1 font-bold text-white">{selectedService.rating}</span>
-               </div>
-               <span className="text-slate-500">({selectedService.reviews} reviews)</span>
+        <div className="w-32 h-32 rounded-xl bg-slate-800 border-4 border-slate-950 overflow-hidden shadow-2xl flex-shrink-0">
+          <img src={selectedService.providerAvatar} alt={selectedService.providerName} className="w-full h-full object-cover" />
+        </div>
+        <div className="flex-1 mb-2">
+          <h1 className="text-3xl font-bold text-white mb-1">{selectedService.providerName}</h1>
+          <p className="text-slate-400 text-lg mb-2">{selectedService.title}</p>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center text-yellow-400">
+              <Star size={16} fill="currentColor" />
+              <span className="ml-1 font-bold text-white">{selectedService.rating}</span>
             </div>
-         </div>
+            <span className="text-slate-500">({selectedService.reviews} reviews)</span>
+          </div>
+        </div>
       </div>
 
       {/* Tabs */}
       <div className="border-b border-slate-800 mt-6">
-         <div className="flex gap-8 overflow-x-auto scrollbar-hide">
-            {['About', 'Services', 'Portfolio', 'Reviews'].map(tab => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={cn(
-                  "pb-4 text-sm font-medium transition-colors relative whitespace-nowrap",
-                  activeTab === tab ? "text-blue-500" : "text-slate-400 hover:text-white"
-                )}
-              >
-                {tab}
-                {activeTab === tab && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-500 rounded-full"></div>}
-              </button>
-            ))}
-         </div>
+        <div className="flex gap-8 overflow-x-auto scrollbar-hide">
+          {['About', 'Services', 'Portfolio', 'Reviews'].map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={cn(
+                "pb-4 text-sm font-medium transition-colors relative whitespace-nowrap",
+                activeTab === tab ? "text-blue-500" : "text-slate-400 hover:text-white"
+              )}
+            >
+              {tab}
+              {activeTab === tab && <div className="absolute bottom-0 left-0 w-full h-0.5 bg-blue-500 rounded-full"></div>}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-6">
-         {/* Left Sidebar Info */}
-         <div className="space-y-6">
-            <Card>
-               <h3 className="font-bold text-white mb-4">Contact Information</h3>
-               <div className="space-y-4 text-sm">
-                  <div className="flex items-center gap-3 text-slate-300">
-                     <Phone size={18} className="text-slate-500"/> (123) 456-7890
-                  </div>
-                  <div className="flex items-center gap-3 text-slate-300">
-                     <Mail size={18} className="text-slate-500"/> contact@{selectedService.providerName.toLowerCase().replace(/ /g, '').replace(/'/g, '')}.com
-                  </div>
-                  <div className="flex items-center gap-3 text-slate-300">
-                     <Globe size={18} className="text-slate-500"/> {selectedService.providerName.toLowerCase().replace(/ /g, '').replace(/'/g, '')}.com
-                  </div>
-                  <div className="flex items-center gap-3 text-slate-300">
-                     <MapPin size={18} className="text-slate-500"/> 123 Main Street, New York, USA
-                  </div>
-               </div>
-            </Card>
-
-            <Card>
-               <h3 className="font-bold text-white mb-4">Business Hours</h3>
-               <div className="space-y-2 text-sm">
-                  {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map(day => (
-                    <div key={day} className="flex justify-between">
-                       <span className="text-slate-400">{day}</span>
-                       <span className="text-slate-200">9:00 AM - 5:00 PM</span>
-                    </div>
-                  ))}
-                  <div className="flex justify-between">
-                       <span className="text-slate-400">Saturday</span>
-                       <span className="text-slate-500">Closed</span>
-                  </div>
-                  <div className="flex justify-between">
-                       <span className="text-slate-400">Sunday</span>
-                       <span className="text-slate-500">Closed</span>
-                  </div>
-               </div>
-            </Card>
-
-            <div className="space-y-3 sticky top-6">
-               <Button className="w-full py-3 shadow-blue-900/20" onClick={() => setShowBookingModal(true)}>
-                 Book & Pay {bookingCart.length > 0 && `(${bookingCart.length})`}
-               </Button>
-               <Button variant="secondary" className="w-full py-3">Message Provider</Button>
+        {/* Left Sidebar Info */}
+        <div className="space-y-6">
+          <Card>
+            <h3 className="font-bold text-white mb-4">Contact Information</h3>
+            <div className="space-y-4 text-sm">
+              <div className="flex items-center gap-3 text-slate-300">
+                <Phone size={18} className="text-slate-500" /> (123) 456-7890
+              </div>
+              <div className="flex items-center gap-3 text-slate-300">
+                <Mail size={18} className="text-slate-500" /> contact@{selectedService.providerName.toLowerCase().replace(/ /g, '').replace(/'/g, '')}.com
+              </div>
+              <div className="flex items-center gap-3 text-slate-300">
+                <Globe size={18} className="text-slate-500" /> {selectedService.providerName.toLowerCase().replace(/ /g, '').replace(/'/g, '')}.com
+              </div>
+              <div className="flex items-center gap-3 text-slate-300">
+                <MapPin size={18} className="text-slate-500" /> 123 Main Street, New York, USA
+              </div>
             </div>
-         </div>
+          </Card>
 
-         {/* Main Content Area */}
-         <div className="lg:col-span-2 space-y-8">
-            {/* About */}
-            {activeTab === 'About' && (
-              <div id="about" className="animate-in fade-in duration-300">
-                 <h3 className="text-xl font-bold text-white mb-4">About {selectedService.providerName}</h3>
-                 <p className="text-slate-400 leading-relaxed mb-4">
-                   With over 15 years of experience serving the New York area, {selectedService.providerName} is your trusted partner for all residential and commercial needs. We pride ourselves on quality workmanship, transparent pricing, and unparalleled customer service. Our team of certified and insured professionals is equipped to handle everything from routine maintenance to complex installations, ensuring every job is done right the first time.
-                 </p>
+          <Card>
+            <h3 className="font-bold text-white mb-4">Business Hours</h3>
+            <div className="space-y-2 text-sm">
+              {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map(day => (
+                <div key={day} className="flex justify-between">
+                  <span className="text-slate-400">{day}</span>
+                  <span className="text-slate-200">9:00 AM - 5:00 PM</span>
+                </div>
+              ))}
+              <div className="flex justify-between">
+                <span className="text-slate-400">Saturday</span>
+                <span className="text-slate-500">Closed</span>
               </div>
-            )}
+              <div className="flex justify-between">
+                <span className="text-slate-400">Sunday</span>
+                <span className="text-slate-500">Closed</span>
+              </div>
+            </div>
+          </Card>
 
-            {/* Services Tab - Dynamic */}
-            {activeTab === 'Services' && (
-              <div id="services" className="animate-in fade-in duration-300">
-                 <h3 className="text-xl font-bold text-white mb-4">Services Offered</h3>
-                 <div className="grid gap-4">
-                    {providerServices.length > 0 ? providerServices.map((service) => {
-                      const isAdded = bookingCart.includes(service.id);
-                      return (
-                        <div key={service.id} className={cn(
-                          "bg-slate-900 border rounded-xl p-5 transition-all",
-                          isAdded ? "border-blue-500/50 bg-blue-900/5" : "border-slate-800 hover:border-slate-700"
-                        )}>
-                           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                              <div className="flex-1">
-                                 <div className="flex justify-between items-start mb-2">
-                                    <h4 className="font-bold text-lg text-white">{service.title}</h4>
-                                    <span className="font-bold text-blue-400 text-lg md:hidden">${service.price}</span>
-                                 </div>
-                                 <p className="text-slate-400 text-sm leading-relaxed mb-3">{service.description}</p>
-                                 <div className="flex items-center gap-3">
-                                    <Badge variant="outline">{service.category}</Badge>
-                                    <span className="text-xs text-slate-500">Fixed Price</span>
-                                 </div>
-                              </div>
-                              
-                              <div className="flex md:flex-col items-center gap-4 border-t md:border-t-0 md:border-l border-slate-800 pt-4 md:pt-0 md:pl-6 md:w-48 flex-shrink-0">
-                                 <span className="hidden md:block font-bold text-2xl text-white">${service.price}</span>
-                                 <Button 
-                                   variant={isAdded ? "secondary" : "primary"}
-                                   className={cn("w-full transition-all", isAdded ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/20" : "")}
-                                   onClick={() => toggleCartItem(service.id)}
-                                 >
-                                    {isAdded ? (
-                                      <>
-                                        <CheckCircle size={18} className="mr-2" /> Added
-                                      </>
-                                    ) : (
-                                      <>
-                                        <PlusCircle size={18} className="mr-2" /> Add
-                                      </>
-                                    )}
-                                 </Button>
-                              </div>
-                           </div>
+          <div className="space-y-3 sticky top-6">
+            <Button className="w-full py-3 shadow-blue-900/20" onClick={() => setShowBookingModal(true)}>
+              Book & Pay {bookingCart.length > 0 && `(${bookingCart.length})`}
+            </Button>
+            <Button
+              variant="secondary"
+              className="w-full py-3"
+              onClick={() => onMessageProvider(selectedService.providerId)}
+            >
+              Message Provider
+            </Button>
+          </div>
+        </div>
+
+        {/* Main Content Area */}
+        <div className="lg:col-span-2 space-y-8">
+          {/* About */}
+          {activeTab === 'About' && (
+            <div id="about" className="animate-in fade-in duration-300">
+              <h3 className="text-xl font-bold text-white mb-4">About {selectedService.providerName}</h3>
+              <p className="text-slate-400 leading-relaxed mb-4">
+                With over 15 years of experience serving the New York area, {selectedService.providerName} is your trusted partner for all residential and commercial needs. We pride ourselves on quality workmanship, transparent pricing, and unparalleled customer service. Our team of certified and insured professionals is equipped to handle everything from routine maintenance to complex installations, ensuring every job is done right the first time.
+              </p>
+            </div>
+          )}
+
+          {/* Services Tab - Dynamic */}
+          {activeTab === 'Services' && (
+            <div id="services" className="animate-in fade-in duration-300">
+              <h3 className="text-xl font-bold text-white mb-4">Services Offered</h3>
+              <div className="grid gap-4">
+                {providerServices.length > 0 ? providerServices.map((service) => {
+                  const isAdded = bookingCart.includes(service.id);
+                  return (
+                    <div key={service.id} className={cn(
+                      "bg-slate-900 border rounded-xl p-5 transition-all",
+                      isAdded ? "border-blue-500/50 bg-blue-900/5" : "border-slate-800 hover:border-slate-700"
+                    )}>
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="flex justify-between items-start mb-2">
+                            <h4 className="font-bold text-lg text-white">{service.title}</h4>
+                            <span className="font-bold text-blue-400 text-lg md:hidden">${service.price}</span>
+                          </div>
+                          <p className="text-slate-400 text-sm leading-relaxed mb-3">{service.description}</p>
+                          <div className="flex items-center gap-3">
+                            <Badge variant="outline">{service.category}</Badge>
+                            <span className="text-xs text-slate-500">Fixed Price</span>
+                          </div>
                         </div>
-                      );
-                    }) : (
-                      <div className="text-center py-10 text-slate-500">
-                        No services listed for this provider yet.
-                      </div>
-                    )}
-                 </div>
-              </div>
-            )}
 
-             {/* Portfolio */}
-             {activeTab === 'Portfolio' && (
-               <div id="portfolio" className="animate-in fade-in duration-300">
-                  <h3 className="text-xl font-bold text-white mb-4">Portfolio</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                     {[1,2,3,4,5,6].map((i) => (
-                       <div key={i} className="aspect-square rounded-xl overflow-hidden bg-slate-800 relative group">
-                          <img src={`https://picsum.photos/seed/${selectedService.id + i}/400/400`} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"/>
-                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                            <Button variant="ghost" className="text-white border border-white/30 hover:bg-white/20">View</Button>
-                          </div>
-                       </div>
-                     ))}
+                        <div className="flex md:flex-col items-center gap-4 border-t md:border-t-0 md:border-l border-slate-800 pt-4 md:pt-0 md:pl-6 md:w-48 flex-shrink-0">
+                          <span className="hidden md:block font-bold text-2xl text-white">${service.price}</span>
+                          <Button
+                            variant={isAdded ? "secondary" : "primary"}
+                            className={cn("w-full transition-all", isAdded ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/20" : "")}
+                            onClick={() => toggleCartItem(service.id)}
+                          >
+                            {isAdded ? (
+                              <>
+                                <CheckCircle size={18} className="mr-2" /> Added
+                              </>
+                            ) : (
+                              <>
+                                <PlusCircle size={18} className="mr-2" /> Add
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }) : (
+                  <div className="text-center py-10 text-slate-500">
+                    No services listed for this provider yet.
                   </div>
-               </div>
-             )}
-             
-             {/* Reviews */}
-             {activeTab === 'Reviews' && (
-               <div id="reviews" className="animate-in fade-in duration-300">
-                  <h3 className="text-xl font-bold text-white mb-4">Customer Reviews</h3>
-                  <div className="space-y-4">
-                     {[1, 2, 3].map((i) => (
-                       <div key={i} className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-                          <div className="flex justify-between items-start mb-4">
-                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center font-bold text-slate-500">U{i}</div>
-                                <div>
-                                   <h5 className="font-bold text-white">Satisfied Customer</h5>
-                                   <p className="text-xs text-slate-500">2 days ago</p>
-                                </div>
-                             </div>
-                             <div className="flex text-yellow-400">
-                                {[1,2,3,4,5].map(s => <Star key={s} size={14} fill="currentColor" />)}
-                             </div>
-                          </div>
-                          <p className="text-slate-400 text-sm">Great service! The provider was on time, professional, and did an excellent job. Would definitely recommend.</p>
-                       </div>
-                     ))}
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Portfolio */}
+          {activeTab === 'Portfolio' && (
+            <div id="portfolio" className="animate-in fade-in duration-300">
+              <h3 className="text-xl font-bold text-white mb-4">Portfolio</h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                  <div key={i} className="aspect-square rounded-xl overflow-hidden bg-slate-800 relative group">
+                    <img src={`https://picsum.photos/seed/${selectedService.id + i}/400/400`} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <Button variant="ghost" className="text-white border border-white/30 hover:bg-white/20">View</Button>
+                    </div>
                   </div>
-               </div>
-             )}
-         </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Reviews */}
+          {activeTab === 'Reviews' && (
+            <div id="reviews" className="animate-in fade-in duration-300">
+              <h3 className="text-xl font-bold text-white mb-4">Customer Reviews</h3>
+              <div className="space-y-4">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center font-bold text-slate-500">U{i}</div>
+                        <div>
+                          <h5 className="font-bold text-white">Satisfied Customer</h5>
+                          <p className="text-xs text-slate-500">2 days ago</p>
+                        </div>
+                      </div>
+                      <div className="flex text-yellow-400">
+                        {[1, 2, 3, 4, 5].map(s => <Star key={s} size={14} fill="currentColor" />)}
+                      </div>
+                    </div>
+                    <p className="text-slate-400 text-sm">Great service! The provider was on time, professional, and did an excellent job. Would definitely recommend.</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
-      
+
       {/* M-Pesa Payment Modal */}
-      <Modal 
-        isOpen={showBookingModal} 
-        onClose={() => setShowBookingModal(false)} 
+      <Modal
+        isOpen={showBookingModal}
+        onClose={() => setShowBookingModal(false)}
         title={paymentStep === 'success' ? 'Payment Successful' : 'Complete Booking'}
       >
         <div className="min-h-[300px] flex flex-col">
@@ -312,7 +320,7 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
                     </p>
                   </div>
                   <Button className="w-full py-3" onClick={() => setPaymentStep('phone')}>
-                    Proceed to Payment <ChevronRight size={16} className="ml-2"/>
+                    Proceed to Payment <ChevronRight size={16} className="ml-2" />
                   </Button>
                 </>
               ) : (
@@ -342,26 +350,26 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
                   <label className="text-sm font-medium text-slate-300">Phone Number</label>
                   <div className="relative">
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-medium">+254</span>
-                    <input 
+                    <input
                       type="tel"
                       value={phoneNumber}
                       onChange={(e) => setPhoneNumber(e.target.value)}
                       className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-14 pr-4 py-3 text-white focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition-all placeholder-slate-600 font-mono"
-                      placeholder="712 345 678" 
+                      placeholder="712 345 678"
                       autoFocus
                     />
                   </div>
                   <p className="text-xs text-slate-500">We will send an STK push to this number.</p>
                 </div>
-                
-                <Button 
-                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-900/20" 
+
+                <Button
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-900/20"
                   onClick={handlePay}
                   disabled={phoneNumber.length < 9}
                 >
                   Pay Now
                 </Button>
-                <button 
+                <button
                   onClick={() => setPaymentStep('summary')}
                   className="w-full text-center text-sm text-slate-500 hover:text-slate-300 mt-2"
                 >
@@ -373,48 +381,48 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
 
           {paymentStep === 'processing' && (
             <div className="flex-1 flex flex-col items-center justify-center text-center py-8 animate-in fade-in duration-500">
-               <div className="relative mb-6">
-                 <div className="w-20 h-20 rounded-full border-4 border-slate-800 border-t-emerald-500 animate-spin"></div>
-                 <div className="absolute inset-0 flex items-center justify-center">
-                   <Smartphone className="text-slate-600" size={24} />
-                 </div>
-               </div>
-               <h3 className="text-xl font-bold text-white mb-2">Check your phone</h3>
-               <p className="text-slate-400 text-sm max-w-xs mx-auto mb-8">
-                 We've sent an M-Pesa prompt to <span className="text-emerald-400 font-mono">+254 {phoneNumber}</span>. Please enter your PIN to complete the transaction.
-               </p>
-               <div className="w-full max-w-xs bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                 <div 
-                   className="h-full bg-emerald-500 transition-all duration-300 ease-out"
-                   style={{ width: `${processingTime}%` }}
-                 ></div>
-               </div>
-               <p className="text-xs text-slate-500 mt-2">Connecting to M-Pesa...</p>
+              <div className="relative mb-6">
+                <div className="w-20 h-20 rounded-full border-4 border-slate-800 border-t-emerald-500 animate-spin"></div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <Smartphone className="text-slate-600" size={24} />
+                </div>
+              </div>
+              <h3 className="text-xl font-bold text-white mb-2">Check your phone</h3>
+              <p className="text-slate-400 text-sm max-w-xs mx-auto mb-8">
+                We've sent an M-Pesa prompt to <span className="text-emerald-400 font-mono">+254 {phoneNumber}</span>. Please enter your PIN to complete the transaction.
+              </p>
+              <div className="w-full max-w-xs bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                <div
+                  className="h-full bg-emerald-500 transition-all duration-300 ease-out"
+                  style={{ width: `${processingTime}%` }}
+                ></div>
+              </div>
+              <p className="text-xs text-slate-500 mt-2">Connecting to M-Pesa...</p>
             </div>
           )}
 
           {paymentStep === 'success' && (
             <div className="flex-1 flex flex-col items-center justify-center text-center py-4 animate-in zoom-in-95 duration-300">
-               <div className="w-20 h-20 bg-emerald-500/20 text-emerald-500 rounded-full flex items-center justify-center mb-6 ring-1 ring-emerald-500/50">
-                 <CheckCircle size={40} />
-               </div>
-               <h3 className="text-2xl font-bold text-white mb-2">Booking Confirmed!</h3>
-               <p className="text-slate-400 text-sm mb-6 max-w-xs">
-                 Your payment of <span className="text-white font-bold">${totalAmount}</span> was successful. The provider has been notified.
-               </p>
-               
-               <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 w-full mb-6 text-left">
-                  <div className="flex justify-between text-xs text-slate-500 mb-1">
-                    <span>Transaction ID</span>
-                    <span>Date</span>
-                  </div>
-                  <div className="flex justify-between text-sm text-slate-300 font-mono">
-                    <span>QDH{Math.random().toString(36).substr(2, 8).toUpperCase()}</span>
-                    <span>{new Date().toLocaleDateString()}</span>
-                  </div>
-               </div>
+              <div className="w-20 h-20 bg-emerald-500/20 text-emerald-500 rounded-full flex items-center justify-center mb-6 ring-1 ring-emerald-500/50">
+                <CheckCircle size={40} />
+              </div>
+              <h3 className="text-2xl font-bold text-white mb-2">Booking Confirmed!</h3>
+              <p className="text-slate-400 text-sm mb-6 max-w-xs">
+                Your payment of <span className="text-white font-bold">${totalAmount}</span> was successful. The provider has been notified.
+              </p>
 
-               <Button className="w-full" onClick={onPaymentSuccess}>View Requests</Button>
+              <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 w-full mb-6 text-left">
+                <div className="flex justify-between text-xs text-slate-500 mb-1">
+                  <span>Transaction ID</span>
+                  <span>Date</span>
+                </div>
+                <div className="flex justify-between text-sm text-slate-300 font-mono">
+                  <span>QDH{Math.random().toString(36).substr(2, 8).toUpperCase()}</span>
+                  <span>{new Date().toLocaleDateString()}</span>
+                </div>
+              </div>
+
+              <Button className="w-full" onClick={onPaymentSuccess}>View Requests</Button>
             </div>
           )}
         </div>

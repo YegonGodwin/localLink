@@ -203,6 +203,7 @@ export default function App() {
   const [currentView, setCurrentView] = useState('dashboard');
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isOnboarding, setIsOnboarding] = useState(false);
+  const [activeChatTarget, setActiveChatTarget] = useState<string | null>(null);
   const [authConfig, setAuthConfig] = useState<{ isSignup: boolean, role: UserRole }>({
     isSignup: false,
     role: 'CONSUMER'
@@ -319,6 +320,12 @@ export default function App() {
     localStorage.removeItem('token');
     setCurrentView('dashboard');
     setIsOnboarding(false);
+    setActiveChatTarget(null);
+  };
+
+  const handleMessageUser = (userId: string) => {
+    setActiveChatTarget(userId);
+    setCurrentView('messages');
   };
 
   // Onboarding View
@@ -331,14 +338,14 @@ export default function App() {
     if (!currentUser) return null;
 
     if (currentView === 'messages') {
-      return <ChatInterface />;
+      return <ChatInterface user={currentUser} initialTargetId={activeChatTarget} />;
     }
 
     switch (currentUser.role) {
       case 'CONSUMER':
-        return <ConsumerDashboard user={currentUser} currentView={currentView} />;
+        return <ConsumerDashboard user={currentUser} currentView={currentView} onMessageProvider={handleMessageUser} />;
       case 'PROVIDER':
-        return <ProviderDashboard user={currentUser} currentView={currentView} onUpdate={handleProfileUpdate} />;
+        return <ProviderDashboard user={currentUser} currentView={currentView} onUpdate={handleProfileUpdate} onMessageUser={handleMessageUser} />;
       case 'ADMIN':
         return <AdminDashboard user={currentUser} currentView={currentView} />;
       default:

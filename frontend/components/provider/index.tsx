@@ -12,9 +12,10 @@ interface ProviderProps {
   user: User;
   currentView: string;
   onUpdate: (updatedUser: User) => void;
+  onMessageUser: (userId: string) => void;
 }
 
-export const ProviderDashboard: React.FC<ProviderProps> = ({ user, currentView, onUpdate }) => {
+export const ProviderDashboard: React.FC<ProviderProps> = ({ user, currentView, onUpdate, onMessageUser }) => {
   const [isCreatingService, setIsCreatingService] = useState(false);
   const [previewData, setPreviewData] = useState<Service | null>(null);
 
@@ -28,11 +29,11 @@ export const ProviderDashboard: React.FC<ProviderProps> = ({ user, currentView, 
     if (isCreatingService) {
       return <CreateService onCancel={() => setIsCreatingService(false)} />;
     }
-    return <MyServices onCreateClick={() => setIsCreatingService(true)} />;
+    return <MyServices user={user} onCreateClick={() => setIsCreatingService(true)} />;
   }
 
   if (currentView === 'requests') {
-    return <ServiceRequests />;
+    return <ServiceRequests onMessageUser={onMessageUser} />;
   }
 
   if (currentView === 'earnings') {
@@ -50,6 +51,7 @@ export const ProviderDashboard: React.FC<ProviderProps> = ({ user, currentView, 
           showBookingModal={false}
           setShowBookingModal={() => { }}
           onPaymentSuccess={() => { }}
+          onMessageProvider={onMessageUser}
         />
       );
     }

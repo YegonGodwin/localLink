@@ -63,6 +63,14 @@ export const updateUserProfile = async (req, res) => {
             email: updatedUser.email,
             role: updatedUser.role,
             avatar: updatedUser.avatar,
+            tagline: updatedUser.tagline,
+            bio: updatedUser.bio,
+            phone: updatedUser.phone,
+            address: updatedUser.address,
+            category: updatedUser.category,
+            website: updatedUser.website,
+            coverImage: updatedUser.coverImage,
+            portfolio: updatedUser.portfolio,
             location: updatedUser.location,
             token: generateToken(updatedUser._id),
         });
@@ -91,5 +99,19 @@ export const getProviderById = async (req, res) => {
     } else {
         res.status(404);
         throw new Error("Provider not found");
+    }
+};
+
+// @desc    Get any user by ID
+// @route   GET /api/users/:id
+// @access  Private
+export const getUserById = async (req, res) => {
+    const user = await User.findById(req.params.id).select("-password");
+
+    if (user) {
+        res.json(user);
+    } else {
+        res.status(404);
+        throw new Error("User not found");
     }
 };

@@ -122,7 +122,10 @@ export const EditProfile: React.FC<EditProfileProps> = ({ user, onPreview, onUpd
 
       {/* Header with Cover & Avatar */}
       <div className="relative">
-        <div className="h-64 md:h-80 w-full rounded-2xl overflow-hidden relative group bg-slate-800 border border-slate-800 shadow-xl">
+        <div
+          className="h-64 md:h-80 w-full rounded-2xl overflow-hidden relative group bg-slate-800 border border-slate-800 shadow-xl cursor-pointer"
+          onClick={() => coverInputRef.current?.click()}
+        >
           <img
             src={formData.coverImage}
             alt="Cover"
@@ -132,12 +135,15 @@ export const EditProfile: React.FC<EditProfileProps> = ({ user, onPreview, onUpd
             <Button
               variant="secondary"
               className="bg-slate-900/80 backdrop-blur-md border-slate-600 hover:bg-slate-800 shadow-2xl"
-              onClick={() => coverInputRef.current?.click()}
+              onClick={(e) => {
+                e.stopPropagation();
+                coverInputRef.current?.click();
+              }}
             >
               <Camera size={18} className="mr-2" /> Change Cover Photo
             </Button>
           </div>
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent opacity-60"></div>
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent opacity-60 pointer-events-none"></div>
         </div>
 
         {/* Profile Avatar Area */}

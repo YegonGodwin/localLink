@@ -93,6 +93,6 @@ export const deleteService = async (req, res) => {
 // @route   GET /api/services/provider/:id
 // @access  Public
 export const getServicesByProvider = async (req, res) => {
-    const services = await Service.find({ provider: req.params.id });
+    const services = await Service.find({ provider: req.params.id }).populate("provider", "name avatar");
     res.json(services);
 };
