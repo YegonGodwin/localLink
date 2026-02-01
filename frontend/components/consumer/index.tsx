@@ -67,7 +67,7 @@ export const ConsumerDashboard: React.FC<ConsumerProps> = ({ user, currentView }
         />
       );
     }
-    return <ExploreServices onSelectService={setSelectedService} />;
+    return <ExploreServices user={user} onSelectService={setSelectedService} />;
   }
 
   // Fallback
