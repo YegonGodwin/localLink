@@ -23,7 +23,20 @@ export const MyServices: React.FC<MyServicesProps> = ({ user, onCreateClick }) =
          const res = await fetch(`/api/services/provider/${user.id}`);
          const data = await res.json();
          if (res.ok) {
-            setServices(data);
+            const mapped = data.map((s: any): Service => ({
+               id: s._id,
+               providerId: s.provider?._id || user.id,
+               providerName: s.provider?.name || user.name,
+               providerAvatar: s.provider?.avatar || user.avatar,
+               title: s.title,
+               description: s.description,
+               category: s.category,
+               price: s.price,
+               rating: s.rating ?? 0,
+               reviews: s.reviews ?? 0,
+               image: s.image
+            }));
+            setServices(mapped);
          }
       } catch (error) {
          console.error('Error fetching services:', error);
@@ -52,7 +65,7 @@ export const MyServices: React.FC<MyServicesProps> = ({ user, onCreateClick }) =
             headers: { Authorization: `Bearer ${token}` }
          });
          if (res.ok) {
-            setServices(prev => prev.filter(s => s.id !== id && (s as any)._id !== id));
+            setServices(prev => prev.filter(s => s.id !== id));
          }
       } catch (error) {
          console.error('Error deleting service:', error);
@@ -128,7 +141,7 @@ export const MyServices: React.FC<MyServicesProps> = ({ user, onCreateClick }) =
                   <Button onClick={onCreateClick}>Create First Service</Button>
                </div>
             ) : currentServices.map((service) => (
-               <div key={(service as any)._id || service.id} className="group bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden hover:border-slate-700 transition-all flex flex-col animate-in fade-in duration-300">
+               <div key={service.id} className="group bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden hover:border-slate-700 transition-all flex flex-col animate-in fade-in duration-300">
                   {/* Image Area */}
                   <div className="h-48 relative overflow-hidden">
                      <img src={service.image} alt={service.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
@@ -164,7 +177,7 @@ export const MyServices: React.FC<MyServicesProps> = ({ user, onCreateClick }) =
                            </button>
                            <button
                               className="p-2 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-                              onClick={() => handleDelete((service as any)._id || service.id)}
+                              onClick={() => handleDelete(service.id)}
                            >
                               <Trash2 size={18} />
                            </button>

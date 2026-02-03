@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Service } from '../../types';
+import { Service, Booking } from '../../types';
 import { Card, Button, Badge, Modal, cn } from '../Layout';
-import { MOCK_SERVICES } from '../../constants';
 import { ArrowLeft, Star, Phone, Mail, Globe, MapPin, CheckCircle, PlusCircle, Loader2, Smartphone, ShieldCheck, CreditCard, ChevronRight } from 'lucide-react';
 
 interface ProviderProfileProps {
@@ -31,9 +30,50 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
   const [paymentStep, setPaymentStep] = useState<PaymentStep>('summary');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [processingTime, setProcessingTime] = useState(0);
+  const [creatingBooking, setCreatingBooking] = useState(false);
+  const [providerServices, setProviderServices] = useState<Service[]>([]);
+  const [servicesLoading, setServicesLoading] = useState(true);
 
-  // Find all services offered by this provider
-  const providerServices = MOCK_SERVICES.filter(s => s.providerId === selectedService.providerId);
+  // Load provider services from API so consumers see live listings
+  useEffect(() => {
+    const fetchProviderServices = async () => {
+      try {
+        setServicesLoading(true);
+        const res = await fetch(`/api/services/provider/${selectedService.providerId}`);
+        const data = await res.json();
+
+        if (res.ok && Array.isArray(data)) {
+          const mapped = data.map((s: any): Service => ({
+            id: s._id,
+            providerId: s.provider?._id || selectedService.providerId,
+            providerName: s.provider?.name || selectedService.providerName,
+            providerAvatar: s.provider?.avatar || selectedService.providerAvatar,
+            title: s.title,
+            description: s.description,
+            category: s.category,
+            price: s.price,
+            rating: s.rating ?? 0,
+            reviews: s.reviews ?? 0,
+            image: s.image
+          }));
+
+          // Ensure the originally clicked service is present even if API returns empty
+          const hasSelected = mapped.some(s => s.id === selectedService.id);
+          setProviderServices(hasSelected ? mapped : [selectedService, ...mapped]);
+        } else {
+          // Fallback to showing just the selected service so UI isn't blank
+          setProviderServices([selectedService]);
+        }
+      } catch (error) {
+        console.error('Error fetching provider services:', error);
+        setProviderServices([selectedService]);
+      } finally {
+        setServicesLoading(false);
+      }
+    };
+
+    fetchProviderServices();
+  }, [selectedService]);
 
   // Calculate cart details
   const selectedServicesList = providerServices.filter(s => bookingCart.includes(s.id));
@@ -47,20 +87,57 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
     }
   }, [showBookingModal]);
 
-  const handlePay = () => {
-    if (!phoneNumber) return;
-    setPaymentStep('processing');
+  const createBookings = async () => {
+    const token = localStorage.getItem('token');
+    const now = new Date().toISOString();
+    const payloads = selectedServicesList.map((item) => ({
+      serviceId: item.id,
+      date: now,
+      price: item.price
+    }));
 
-    // Simulate STK Push delay
+    const results = [];
+    for (const body of payloads) {
+      const res = await fetch('/api/bookings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || 'Failed to create booking');
+      }
+      results.push(await res.json() as Booking);
+    }
+    return results;
+  };
+
+  const handlePay = async () => {
+    if (!phoneNumber || selectedServicesList.length === 0 || creatingBooking) return;
+    setPaymentStep('processing');
+    setCreatingBooking(true);
+
     let progress = 0;
     const interval = setInterval(() => {
-      progress += 10;
+      progress = Math.min(progress + 12, 90);
       setProcessingTime(progress);
-      if (progress >= 100) {
-        clearInterval(interval);
-        setPaymentStep('success');
-      }
-    }, 400); // 4 seconds total
+    }, 350);
+
+    try {
+      await createBookings();
+      setProcessingTime(100);
+      setPaymentStep('success');
+    } catch (error: any) {
+      console.error(error);
+      alert(error.message || 'Booking failed');
+      setPaymentStep('summary');
+    } finally {
+      setCreatingBooking(false);
+      clearInterval(interval);
+    }
   };
 
   return (
@@ -192,7 +269,12 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
             <div id="services" className="animate-in fade-in duration-300">
               <h3 className="text-xl font-bold text-white mb-4">Services Offered</h3>
               <div className="grid gap-4">
-                {providerServices.length > 0 ? providerServices.map((service) => {
+                {servicesLoading ? (
+                  <div className="flex items-center gap-2 text-slate-400">
+                    <Loader2 size={18} className="animate-spin text-blue-500" />
+                    Fetching latest services...
+                  </div>
+                ) : providerServices.length > 0 ? providerServices.map((service) => {
                   const isAdded = bookingCart.includes(service.id);
                   return (
                     <div key={service.id} className={cn(
