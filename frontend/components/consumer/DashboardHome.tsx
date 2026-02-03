@@ -1,14 +1,100 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Card, Button, Badge, cn } from '../Layout';
-import { MOCK_BOOKINGS, MOCK_SERVICES, MOCK_PAYMENTS, MOCK_FAVORITES } from '../../constants';
-import { Plus } from 'lucide-react';
-import { User } from '../../types';
+import { Plus, Loader2 } from 'lucide-react';
+import { User, Booking, Transaction } from '../../types';
 
 interface DashboardHomeProps {
   user: User;
 }
 
 export const DashboardHome: React.FC<DashboardHomeProps> = ({ user }) => {
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [payments, setPayments] = useState<Transaction[]>([]);
+  const [loadingBookings, setLoadingBookings] = useState(true);
+  const [loadingPayments, setLoadingPayments] = useState(true);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+
+    const loadBookings = async () => {
+      try {
+        setLoadingBookings(true);
+        const res = await fetch('/api/bookings/my-bookings', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (res.ok && Array.isArray(data)) {
+          const mapped: Booking[] = data.map((b: any) => ({
+            id: b._id,
+            serviceId: b.service?._id || '',
+            consumerId: b.consumer?._id || '',
+            providerId: b.provider?._id || '',
+            serviceTitle: b.service?.title || 'Service',
+            providerName: b.provider?.name || 'Provider',
+            consumerName: b.consumer?.name || 'You',
+            date: b.date,
+            status: b.status,
+            price: b.price
+          }));
+          setBookings(mapped);
+        } else {
+          setBookings([]);
+        }
+      } catch (error) {
+        console.error('Failed to load bookings', error);
+      } finally {
+        setLoadingBookings(false);
+      }
+    };
+
+    const loadPayments = async () => {
+      try {
+        setLoadingPayments(true);
+        const res = await fetch('/api/transactions', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (res.ok && Array.isArray(data)) {
+          const mapped: Transaction[] = data.map((t: any) => ({
+            id: t._id,
+            date: t.date,
+            amount: t.amount,
+            status: t.status,
+            description: t.description,
+            user: t.user?.name || user.name
+          }));
+          setPayments(mapped);
+        } else {
+          setPayments([]);
+        }
+      } catch (error) {
+        console.error('Failed to load payments', error);
+      } finally {
+        setLoadingPayments(false);
+      }
+    };
+
+    loadBookings();
+    loadPayments();
+  }, [user.name]);
+
+  const activeBookings = useMemo(
+    () => bookings.filter(b => b.status === 'IN_PROGRESS' || b.status === 'PENDING'),
+    [bookings]
+  );
+
+  const favoriteProviders = useMemo(() => {
+    const map = new Map<string, { name: string; id: string; count: number }>();
+    bookings.forEach(b => {
+      if (b.providerId) {
+        const current = map.get(b.providerId) || { name: b.providerName, id: b.providerId, count: 0 };
+        current.count += 1;
+        map.set(b.providerId, current);
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => b.count - a.count).slice(0, 4);
+  }, [bookings]);
+
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
       {/* Welcome Header */}
@@ -26,41 +112,50 @@ export const DashboardHome: React.FC<DashboardHomeProps> = ({ user }) => {
       <div>
         <h2 className="text-xl font-bold text-white mb-4">Your Active Requests</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {MOCK_BOOKINGS.map((booking) => {
-            // Find matching service image for better mock data display
-            const serviceImage = MOCK_SERVICES.find(s => s.id === booking.serviceId)?.image || 'https://picsum.photos/400/300';
+          {loadingBookings ? (
+            <div className="col-span-full flex items-center gap-2 text-slate-400">
+              <Loader2 className="animate-spin text-blue-500" size={18} /> Loading your requests...
+            </div>
+          ) : activeBookings.length === 0 ? (
+            <Card className="col-span-full text-slate-400 border-dashed border-slate-800">
+              You have no active requests. Explore services to book a provider.
+            </Card>
+          ) : (
+            activeBookings.map((booking) => {
+              const statusColors: Record<Booking['status'], string> = {
+                'IN_PROGRESS': 'bg-amber-600/20 text-amber-500 border-amber-600/20',
+                'PENDING': 'bg-yellow-600/20 text-yellow-500 border-yellow-600/20',
+                'COMPLETED': 'bg-emerald-600/20 text-emerald-500 border-emerald-600/20',
+                'CANCELLED': 'bg-red-600/20 text-red-500 border-red-600/20'
+              };
 
-            const statusColors = {
-              'IN_PROGRESS': 'bg-amber-600/20 text-amber-500 border-amber-600/20',
-              'PENDING': 'bg-yellow-600/20 text-yellow-500 border-yellow-600/20',
-              'COMPLETED': 'bg-emerald-600/20 text-emerald-500 border-emerald-600/20',
-              'CANCELLED': 'bg-red-600/20 text-red-500 border-red-600/20'
-            };
+              const statusLabel: Record<Booking['status'], string> = {
+                'IN_PROGRESS': 'In Progress',
+                'PENDING': 'Pending',
+                'COMPLETED': 'Completed',
+                'CANCELLED': 'Cancelled'
+              };
 
-            const statusLabel = {
-              'IN_PROGRESS': 'In Progress',
-              'PENDING': 'Pending',
-              'COMPLETED': 'Completed',
-              'CANCELLED': 'Cancelled'
-            };
-
-            return (
-              <Card key={booking.id} noPadding className="flex flex-col h-full bg-slate-900 border-slate-800">
-                <div className="relative h-48">
-                  <img src={serviceImage} alt={booking.serviceTitle} className="w-full h-full object-cover" />
-                  <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-t from-slate-900/90 to-transparent"></div>
-                </div>
-                <div className="p-5 flex-1 flex flex-col relative -mt-12">
-                  <span className={cn("self-start px-3 py-1 rounded-full text-xs font-semibold border mb-3 backdrop-blur-md", statusColors[booking.status])}>
-                    {statusLabel[booking.status]}
-                  </span>
-                  <h3 className="text-xl font-bold text-white mb-1">{booking.serviceTitle}</h3>
-                  <p className="text-slate-400 text-sm mb-6">{booking.providerName}</p>
-                  <Button variant="secondary" className="w-full mt-auto bg-slate-800/80 hover:bg-slate-700">View Details</Button>
-                </div>
-              </Card>
-            );
-          })}
+              return (
+                <Card key={booking.id} noPadding className="flex flex-col h-full bg-slate-900 border-slate-800">
+                  <div className="relative h-48">
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 to-transparent"></div>
+                    <div className="w-full h-full bg-slate-800 flex items-center justify-center text-slate-600 text-sm">
+                      {booking.serviceTitle}
+                    </div>
+                  </div>
+                  <div className="p-5 flex-1 flex flex-col relative -mt-12">
+                    <span className={cn("self-start px-3 py-1 rounded-full text-xs font-semibold border mb-3 backdrop-blur-md", statusColors[booking.status])}>
+                      {statusLabel[booking.status]}
+                    </span>
+                    <h3 className="text-xl font-bold text-white mb-1">{booking.serviceTitle}</h3>
+                    <p className="text-slate-400 text-sm mb-6">{booking.providerName}</p>
+                    <Button variant="secondary" className="w-full mt-auto bg-slate-800/80 hover:bg-slate-700">View Details</Button>
+                  </div>
+                </Card>
+              );
+            })
+          )}
         </div>
       </div>
 
@@ -80,16 +175,24 @@ export const DashboardHome: React.FC<DashboardHomeProps> = ({ user }) => {
                 <div className="w-1/4">Service</div>
                 <div className="w-1/4 text-right">Amount</div>
               </div>
-              <div className="divide-y divide-slate-800">
-                {MOCK_PAYMENTS.map((payment) => (
-                  <div key={payment.id} className="py-4 px-6 flex items-center hover:bg-slate-800/30 transition-colors">
-                    <div className="w-1/4 text-slate-300 text-sm">{payment.date}</div>
-                    <div className="w-1/4 text-white font-medium text-sm">{payment.provider}</div>
-                    <div className="w-1/4 text-slate-400 text-sm">{payment.service}</div>
-                    <div className="w-1/4 text-right text-white font-mono text-sm">${payment.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
-                  </div>
-                ))}
-              </div>
+              {loadingPayments ? (
+                <div className="p-4 text-slate-400 flex items-center gap-2">
+                  <Loader2 className="animate-spin text-blue-500" size={18} /> Loading payments...
+                </div>
+              ) : payments.length === 0 ? (
+                <div className="p-4 text-slate-500">No payments recorded yet.</div>
+              ) : (
+                <div className="divide-y divide-slate-800">
+                  {payments.slice(0, 6).map((payment) => (
+                    <div key={payment.id} className="py-4 px-6 flex items-center hover:bg-slate-800/30 transition-colors">
+                      <div className="w-1/4 text-slate-300 text-sm">{new Date(payment.date).toLocaleDateString()}</div>
+                      <div className="w-1/4 text-white font-medium text-sm">{payment.user}</div>
+                      <div className="w-1/4 text-slate-400 text-sm">{payment.description}</div>
+                      <div className="w-1/4 text-right text-white font-mono text-sm">${payment.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </Card>
         </div>
@@ -97,17 +200,23 @@ export const DashboardHome: React.FC<DashboardHomeProps> = ({ user }) => {
         {/* Favorite Providers */}
         <div>
           <h2 className="text-xl font-bold text-white mb-4">Your Favorite Providers</h2>
-          <div className="space-y-4">
-            {MOCK_FAVORITES.map((fav) => (
-              <Card key={fav.id} className="flex items-center gap-4 hover:bg-slate-800/50 transition-colors cursor-pointer p-4">
-                <img src={fav.avatar} alt={fav.name} className="w-12 h-12 rounded-full object-cover" />
-                <div>
-                  <h4 className="font-bold text-white text-base">{fav.name}</h4>
-                  <p className="text-slate-400 text-sm">{fav.role}</p>
-                </div>
-              </Card>
-            ))}
-          </div>
+          {favoriteProviders.length === 0 ? (
+            <Card className="text-slate-500">Book providers to see them highlighted here.</Card>
+          ) : (
+            <div className="space-y-4">
+              {favoriteProviders.map((fav) => (
+                <Card key={fav.id} className="flex items-center gap-4 hover:bg-slate-800/50 transition-colors cursor-pointer p-4">
+                  <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 font-semibold">
+                    {fav.name.charAt(0)}
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-white text-base">{fav.name}</h4>
+                    <p className="text-slate-400 text-sm">Booked {fav.count} time{fav.count > 1 ? 's' : ''}</p>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
