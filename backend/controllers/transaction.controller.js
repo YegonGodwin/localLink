@@ -10,7 +10,15 @@ export const getTransactions = async (req, res) => {
         query = { user: req.user._id };
     }
 
-    const transactions = await Transaction.find(query).populate("user", "name email");
+    const transactions = await Transaction.find(query)
+        .populate("user", "name email")
+        .populate({
+            path: "booking",
+            populate: [
+                { path: "provider", select: "name email" },
+                { path: "service", select: "title" },
+            ],
+        });
     res.json(transactions);
 };
 
@@ -18,7 +26,15 @@ export const getTransactions = async (req, res) => {
 // @route   GET /api/transactions/:id
 // @access  Private
 export const getTransactionById = async (req, res) => {
-    const transaction = await Transaction.findById(req.params.id).populate("user", "name email");
+    const transaction = await Transaction.findById(req.params.id)
+        .populate("user", "name email")
+        .populate({
+            path: "booking",
+            populate: [
+                { path: "provider", select: "name email" },
+                { path: "service", select: "title" },
+            ],
+        });
 
     if (transaction) {
         if (transaction.user._id.toString() !== req.user._id.toString() && req.user.role !== "ADMIN") {

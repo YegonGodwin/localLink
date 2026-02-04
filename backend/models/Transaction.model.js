@@ -2,6 +2,10 @@ import mongoose from "mongoose";
 
 const transactionSchema = new mongoose.Schema(
     {
+        booking: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Booking",
+        },
         user: {
             type: mongoose.Schema.Types.ObjectId,
             required: true,

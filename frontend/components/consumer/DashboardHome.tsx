@@ -12,6 +12,7 @@ export const DashboardHome: React.FC<DashboardHomeProps> = ({ user }) => {
   const [payments, setPayments] = useState<Transaction[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(true);
   const [loadingPayments, setLoadingPayments] = useState(true);
+  const [paymentsError, setPaymentsError] = useState<string | null>(null);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -50,6 +51,7 @@ export const DashboardHome: React.FC<DashboardHomeProps> = ({ user }) => {
     const loadPayments = async () => {
       try {
         setLoadingPayments(true);
+        setPaymentsError(null);
         const res = await fetch('/api/transactions', {
           headers: { Authorization: `Bearer ${token}` }
         });
@@ -57,18 +59,21 @@ export const DashboardHome: React.FC<DashboardHomeProps> = ({ user }) => {
         if (res.ok && Array.isArray(data)) {
           const mapped: Transaction[] = data.map((t: any) => ({
             id: t._id,
-            date: t.date,
+            date: t.date || t.createdAt,
             amount: t.amount,
             status: t.status,
-            description: t.description,
-            user: t.user?.name || user.name
+            description: t.booking?.service?.title || t.description,
+            user: t.booking?.provider?.name || t.user?.name || user.name
           }));
-          setPayments(mapped);
+          const successful = mapped.filter((t) => t.status === 'COMPLETED');
+          setPayments(successful);
         } else {
           setPayments([]);
+          setPaymentsError('Unable to load payments.');
         }
       } catch (error) {
         console.error('Failed to load payments', error);
+        setPaymentsError('Unable to load payments.');
       } finally {
         setLoadingPayments(false);
       }
@@ -76,6 +81,8 @@ export const DashboardHome: React.FC<DashboardHomeProps> = ({ user }) => {
 
     loadBookings();
     loadPayments();
+    const paymentsIntervalId = setInterval(loadPayments, 30000);
+    return () => clearInterval(paymentsIntervalId);
   }, [user.name]);
 
   const activeBookings = useMemo(
@@ -179,6 +186,8 @@ export const DashboardHome: React.FC<DashboardHomeProps> = ({ user }) => {
                 <div className="p-4 text-slate-400 flex items-center gap-2">
                   <Loader2 className="animate-spin text-blue-500" size={18} /> Loading payments...
                 </div>
+              ) : paymentsError ? (
+                <div className="p-4 text-red-400">{paymentsError}</div>
               ) : payments.length === 0 ? (
                 <div className="p-4 text-slate-500">No payments recorded yet.</div>
               ) : (

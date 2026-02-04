@@ -1,5 +1,6 @@
 import Booking from "../models/Booking.model.js";
 import Service from "../models/Service.model.js";
+import Transaction from "../models/Transaction.model.js";
 
 // @desc    Create new booking
 // @route   POST /api/bookings
@@ -23,6 +24,29 @@ export const createBooking = async (req, res) => {
     });
 
     const createdBooking = await booking.save();
+
+    // Create a pending transaction for the provider (escrowed until completion)
+    try {
+        await Transaction.create({
+            booking: createdBooking._id,
+            user: service.provider,
+            amount: price,
+            status: "PENDING",
+            description: `Escrow for Booking #${createdBooking._id.toString().slice(-6).toUpperCase()}`,
+        });
+        // Create a completed transaction for the consumer payment
+        await Transaction.create({
+            booking: createdBooking._id,
+            user: req.user._id,
+            amount: price,
+            status: "COMPLETED",
+            description: `Payment for ${service.title}`,
+        });
+    } catch (error) {
+        // Booking should still succeed even if transaction creation fails
+        console.error("Failed to create transaction for booking:", error);
+    }
+
     res.status(201).json(createdBooking);
 };
 
@@ -68,8 +92,39 @@ export const updateBookingStatus = async (req, res) => {
             throw new Error("Not authorized to update booking status");
         }
 
-        booking.status = status || booking.status;
+        const nextStatus = status || booking.status;
+        booking.status = nextStatus;
         const updatedBooking = await booking.save();
+
+        if (status === "COMPLETED" || status === "CANCELLED") {
+            const txStatus = status === "COMPLETED" ? "COMPLETED" : "FAILED";
+            try {
+                await Transaction.findOneAndUpdate(
+                    { booking: booking._id, user: booking.provider },
+                    {
+                        $set: {
+                            status: txStatus,
+                            amount: booking.price,
+                            description: `Escrow for Booking #${booking._id.toString().slice(-6).toUpperCase()}`,
+                        },
+                    },
+                    { upsert: true, new: true }
+                );
+                await Transaction.findOneAndUpdate(
+                    { booking: booking._id, user: booking.consumer },
+                    {
+                        $set: {
+                            status: txStatus,
+                            amount: booking.price,
+                            description: "Payment for service",
+                        },
+                    },
+                    { upsert: true, new: true }
+                );
+            } catch (error) {
+                console.error("Failed to update transaction for booking:", error);
+            }
+        }
         res.json(updatedBooking);
     } else {
         res.status(404);
