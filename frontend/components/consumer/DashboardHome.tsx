@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Card, Button, Badge, cn } from '../Layout';
+import { Card, Button, cn } from '../Layout';
 import { Plus, Loader2 } from 'lucide-react';
 import { User, Booking, Transaction } from '../../types';
 
@@ -48,41 +48,50 @@ export const DashboardHome: React.FC<DashboardHomeProps> = ({ user }) => {
       }
     };
 
-    const loadPayments = async () => {
+    const loadPayments = async (signal?: AbortSignal) => {
       try {
         setLoadingPayments(true);
         setPaymentsError(null);
         const res = await fetch('/api/transactions', {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { Authorization: `Bearer ${token}` },
+          signal,
         });
         const data = await res.json();
+        if (signal && signal.aborted) return;
         if (res.ok && Array.isArray(data)) {
           const mapped: Transaction[] = data.map((t: any) => ({
             id: t._id,
-            date: t.date || t.createdAt,
+            date: t.date || t.createdAt || new Date().toISOString(),
             amount: t.amount,
             status: t.status,
-            description: t.booking?.service?.title || t.description,
-            user: t.booking?.provider?.name || t.user?.name || user.name
+            description: t.booking?.service?.title || t.description || 'No description',
+            user: t.user?.name || user.name
           }));
           const successful = mapped.filter((t) => t.status === 'COMPLETED');
-          setPayments(successful);
+          if (!signal || !signal.aborted) setPayments(successful);
         } else {
-          setPayments([]);
-          setPaymentsError('Unable to load payments.');
+          if (!signal || !signal.aborted) {
+            setPayments([]);
+            setPaymentsError('Unable to load payments.');
+          }
         }
       } catch (error) {
+        if (signal && signal.aborted) return;
         console.error('Failed to load payments', error);
-        setPaymentsError('Unable to load payments.');
+        if (!signal || !signal.aborted) setPaymentsError('Unable to load payments.');
       } finally {
-        setLoadingPayments(false);
+        if (!signal || !signal.aborted) setLoadingPayments(false);
       }
     };
 
     loadBookings();
-    loadPayments();
-    const paymentsIntervalId = setInterval(loadPayments, 30000);
-    return () => clearInterval(paymentsIntervalId);
+    const controller = new AbortController();
+    loadPayments(controller.signal);
+    const paymentsIntervalId = setInterval(() => loadPayments(controller.signal), 30000);
+    return () => {
+      controller.abort();
+      clearInterval(paymentsIntervalId);
+    };
   }, [user.name]);
 
   const activeBookings = useMemo(

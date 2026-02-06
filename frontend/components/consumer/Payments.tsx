@@ -1,29 +1,85 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card } from '../Layout';
-import { MOCK_PAYMENTS } from '../../constants';
+import { Loader2 } from 'lucide-react';
+import { Transaction } from '../../types';
 
 export const Payments: React.FC = () => {
+  const [payments, setPayments] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+
+    const loadPayments = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await fetch('/api/transactions', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (res.ok && Array.isArray(data)) {
+          const mapped: Transaction[] = data.map((t: any) => ({
+            id: t._id,
+            date: t.date || t.createdAt,
+            amount: t.amount,
+            status: t.status,
+            description: t.booking?.service?.title || t.description,
+            user: t.booking?.provider?.name || t.user?.name || 'Provider'
+          }));
+          setPayments(mapped);
+        } else {
+          setPayments([]);
+          setError('Unable to load payments.');
+        }
+      } catch (loadError) {
+        console.error('Failed to load payments', loadError);
+        setPayments([]);
+        setError('Unable to load payments.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadPayments();
+    const paymentsIntervalId = setInterval(loadPayments, 30000);
+    return () => clearInterval(paymentsIntervalId);
+  }, []);
+
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       <h3 className="text-2xl font-bold mb-6">Payment History</h3>
       <Card noPadding className="overflow-hidden">
          <div className="w-full text-left">
-            <div className="bg-slate-950/30 text-slate-500 text-xs font-bold uppercase py-3 px-6 flex">
-               <div className="w-1/4">Date</div>
-               <div className="w-1/4">Provider</div>
-               <div className="w-1/4">Service</div>
-               <div className="w-1/4 text-right">Amount</div>
-            </div>
-            <div className="divide-y divide-slate-800">
-               {MOCK_PAYMENTS.map((payment) => (
-                 <div key={payment.id} className="py-4 px-6 flex items-center hover:bg-slate-800/30 transition-colors">
-                    <div className="w-1/4 text-slate-300 text-sm">{payment.date}</div>
-                    <div className="w-1/4 text-white font-medium text-sm">{payment.provider}</div>
-                    <div className="w-1/4 text-slate-400 text-sm">{payment.service}</div>
-                    <div className="w-1/4 text-right text-white font-mono text-sm">${payment.amount.toLocaleString('en-US', {minimumFractionDigits: 2})}</div>
-                 </div>
-               ))}
-            </div>
+             <div className="bg-slate-950/30 text-slate-500 text-xs font-bold uppercase py-3 px-6 flex">
+                <div className="w-1/5">Date</div>
+                <div className="w-1/5">Provider</div>
+                <div className="w-1/5">Service</div>
+                <div className="w-1/5">Status</div>
+                <div className="w-1/5 text-right">Amount</div>
+             </div>
+            {loading ? (
+              <div className="p-4 text-slate-400 flex items-center gap-2">
+                <Loader2 className="animate-spin text-blue-500" size={18} /> Loading payments...
+              </div>
+            ) : error ? (
+              <div className="p-4 text-red-400">{error}</div>
+            ) : payments.length === 0 ? (
+              <div className="p-4 text-slate-500">No payments recorded yet.</div>
+            ) : (
+              <div className="divide-y divide-slate-800">
+                {payments.map((payment) => (
+                  <div key={payment.id} className="py-4 px-6 flex items-center hover:bg-slate-800/30 transition-colors">
+                    <div className="w-1/5 text-slate-300 text-sm">{new Date(payment.date).toLocaleDateString()}</div>
+                    <div className="w-1/5 text-white font-medium text-sm">{payment.user}</div>
+                    <div className="w-1/5 text-slate-400 text-sm">{payment.description}</div>
+                    <div className="w-1/5 text-slate-300 text-sm capitalize">{payment.status?.toLowerCase() || 'pending'}</div>
+                    <div className="w-1/5 text-right text-white font-mono text-sm">${payment.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                  </div>
+                ))}
+              </div>
+            )}
          </div>
       </Card>
     </div>

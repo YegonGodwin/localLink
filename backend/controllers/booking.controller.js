@@ -1,6 +1,7 @@
 import Booking from "../models/Booking.model.js";
 import Service from "../models/Service.model.js";
 import Transaction from "../models/Transaction.model.js";
+import mongoose from 'mongoose';
 
 // @desc    Create new booking
 // @route   POST /api/bookings
@@ -26,25 +27,66 @@ export const createBooking = async (req, res) => {
     const createdBooking = await booking.save();
 
     // Create a pending transaction for the provider (escrowed until completion)
+    // and a completed transaction for the consumer payment. Use a mongoose
+    // session so both inserts commit or rollback together. If sessions aren't
+    // available, fall back to a compensation delete of the first transaction
+    // if the second fails.
     try {
-        await Transaction.create({
-            booking: createdBooking._id,
-            user: service.provider,
-            amount: price,
-            status: "PENDING",
-            description: `Escrow for Booking #${createdBooking._id.toString().slice(-6).toUpperCase()}`,
-        });
-        // Create a completed transaction for the consumer payment
-        await Transaction.create({
-            booking: createdBooking._id,
-            user: req.user._id,
-            amount: price,
-            status: "COMPLETED",
-            description: `Payment for ${service.title}`,
-        });
-    } catch (error) {
-        // Booking should still succeed even if transaction creation fails
-        console.error("Failed to create transaction for booking:", error);
+        const session = await mongoose.startSession();
+        try {
+            await session.withTransaction(async () => {
+                await Transaction.create([
+                    {
+                        booking: createdBooking._id,
+                        user: service.provider,
+                        amount: price,
+                        status: "PENDING",
+                        description: `Escrow for Booking #${createdBooking._id.toString().slice(-6).toUpperCase()}`,
+                    }
+                ], { session });
+
+                await Transaction.create({
+                    booking: createdBooking._id,
+                    user: req.user._id,
+                    amount: price,
+                    status: "COMPLETED",
+                    description: `Payment for ${service.title}`,
+                }, { session });
+            });
+        } finally {
+            session.endSession();
+        }
+    } catch (txError) {
+        // Fallback: attempt to create both without a session but compensate
+        // by deleting the first transaction if the second fails.
+        try {
+            const t1 = await Transaction.create({
+                booking: createdBooking._id,
+                user: service.provider,
+                amount: price,
+                status: "PENDING",
+                description: `Escrow for Booking #${createdBooking._id.toString().slice(-6).toUpperCase()}`,
+            });
+            try {
+                await Transaction.create({
+                    booking: createdBooking._id,
+                    user: req.user._id,
+                    amount: price,
+                    status: "COMPLETED",
+                    description: `Payment for ${service.title}`,
+                });
+            } catch (secondErr) {
+                // remove the first transaction to avoid partial state
+                try {
+                    await Transaction.deleteOne({ _id: t1._id });
+                } catch (delErr) {
+                    console.error('Failed to rollback first transaction after second failed:', delErr);
+                }
+                throw secondErr;
+            }
+        } catch (finalErr) {
+            console.error("Failed to create transactions for booking:", finalErr);
+        }
     }
 
     res.status(201).json(createdBooking);
@@ -97,26 +139,37 @@ export const updateBookingStatus = async (req, res) => {
         const updatedBooking = await booking.save();
 
         if (status === "COMPLETED" || status === "CANCELLED") {
-            const txStatus = status === "COMPLETED" ? "COMPLETED" : "FAILED";
+            const providerTxStatus = status === "COMPLETED" ? "COMPLETED" : "FAILED";
+            const consumerTxStatus = status === "CANCELLED" ? "REFUNDED" : providerTxStatus;
             try {
                 await Transaction.findOneAndUpdate(
                     { booking: booking._id, user: booking.provider },
                     {
                         $set: {
-                            status: txStatus,
+                            status: providerTxStatus,
                             amount: booking.price,
                             description: `Escrow for Booking #${booking._id.toString().slice(-6).toUpperCase()}`,
                         },
                     },
                     { upsert: true, new: true }
                 );
+
+                // attempt to include the original service title in the consumer description
+                let serviceTitle = 'service';
+                try {
+                    const svc = await Service.findById(booking.service);
+                    if (svc && svc.title) serviceTitle = svc.title;
+                } catch (svcErr) {
+                    // ignore and fall back to generic
+                }
+
                 await Transaction.findOneAndUpdate(
                     { booking: booking._id, user: booking.consumer },
                     {
                         $set: {
-                            status: txStatus,
+                            status: consumerTxStatus,
                             amount: booking.price,
-                            description: "Payment for service",
+                            description: `Payment for ${serviceTitle}`,
                         },
                     },
                     { upsert: true, new: true }
