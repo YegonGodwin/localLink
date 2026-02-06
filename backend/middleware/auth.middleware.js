@@ -29,4 +29,12 @@ const protect = async (req, res, next) => {
     }
 };
 
-export { protect };
+const adminOnly = (req, res, next) => {
+    if (req.user && req.user.role === "ADMIN") {
+        return next();
+    }
+    res.status(403);
+    throw new Error("Not authorized as admin");
+};
+
+export { protect, adminOnly };

@@ -3,10 +3,9 @@ import { Layout, Button, cn } from './components/Layout';
 import { ConsumerDashboard } from './components/consumer/index';
 import { ProviderDashboard } from './components/provider/index';
 import { Onboarding } from './components/provider/Onboarding';
-import { AdminDashboard } from './components/Admin';
+import { AdminDashboard } from './components/admin';
 import { ChatInterface } from './components/Chat';
 import { LandingPage } from './components/LandingPage';
-import { MOCK_USERS } from './constants';
 import { User, UserRole } from './types';
 import { ShieldCheck, Briefcase, User as UserIcon, X, Check } from 'lucide-react';
 
