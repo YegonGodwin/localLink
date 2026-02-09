@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Service, Booking } from '../../types';
+import { Service } from '../../types';
 import { Card, Button, Badge, Modal, cn } from '../Layout';
 import { ArrowLeft, Star, Phone, Mail, Globe, MapPin, CheckCircle, PlusCircle, Loader2, Smartphone, ShieldCheck, CreditCard, ChevronRight } from 'lucide-react';
 
@@ -31,6 +31,8 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
   const [phoneNumber, setPhoneNumber] = useState('');
   const [processingTime, setProcessingTime] = useState(0);
   const [creatingBooking, setCreatingBooking] = useState(false);
+  const [transactionId, setTransactionId] = useState<string | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
   const [providerServices, setProviderServices] = useState<Service[]>([]);
   const [servicesLoading, setServicesLoading] = useState(true);
 
@@ -84,59 +86,85 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
     if (showBookingModal) {
       setPaymentStep('summary');
       setPhoneNumber('');
+      setProcessingTime(0);
+      setTransactionId(null);
+      setPaymentError(null);
     }
   }, [showBookingModal]);
 
-  const createBookings = async () => {
+  const pollPaymentStatus = async (txId: string) => {
     const token = localStorage.getItem('token');
-    const now = new Date().toISOString();
-    const payloads = selectedServicesList.map((item) => ({
-      serviceId: item.id,
-      date: now,
-      price: item.price
-    }));
+    const startedAt = Date.now();
+    const maxWaitMs = 120000;
 
-    const results = [];
-    for (const body of payloads) {
-      const res = await fetch('/api/bookings', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(body)
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || 'Failed to create booking');
-      }
-      results.push(await res.json() as Booking);
-    }
-    return results;
+    return new Promise((resolve, reject) => {
+      const intervalId = setInterval(async () => {
+        const elapsed = Date.now() - startedAt;
+        setProcessingTime(Math.min(95, Math.round((elapsed / maxWaitMs) * 95)));
+
+        if (elapsed > maxWaitMs) {
+          clearInterval(intervalId);
+          reject(new Error('Payment confirmation timed out. Please check your phone and try again.'));
+          return;
+        }
+
+        try {
+          const res = await fetch(`/api/transactions/${txId}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          const data = await res.json();
+          if (res.ok && data?.status) {
+            if (data.status === 'COMPLETED') {
+              clearInterval(intervalId);
+              resolve(data);
+            } else if (data.status === 'FAILED') {
+              clearInterval(intervalId);
+              reject(new Error('Payment failed or was cancelled.'));
+            }
+          }
+        } catch (error) {
+          // Keep polling on transient errors
+        }
+      }, 3000);
+    });
   };
 
   const handlePay = async () => {
     if (!phoneNumber || selectedServicesList.length === 0 || creatingBooking) return;
     setPaymentStep('processing');
     setCreatingBooking(true);
-
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress = Math.min(progress + 12, 90);
-      setProcessingTime(progress);
-    }, 350);
+    setPaymentError(null);
 
     try {
-      await createBookings();
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/payments/mpesa/stk-push', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          phoneNumber,
+          serviceIds: selectedServicesList.map((item) => item.id)
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || 'Failed to initiate payment');
+      }
+
+      setTransactionId(data.transactionId);
+      await pollPaymentStatus(data.transactionId);
+
       setProcessingTime(100);
       setPaymentStep('success');
     } catch (error: any) {
       console.error(error);
-      alert(error.message || 'Booking failed');
-      setPaymentStep('summary');
+      setPaymentError(error.message || 'Payment failed');
+      setPaymentStep('phone');
     } finally {
       setCreatingBooking(false);
-      clearInterval(interval);
     }
   };
 
@@ -285,7 +313,7 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
                         <div className="flex-1">
                           <div className="flex justify-between items-start mb-2">
                             <h4 className="font-bold text-lg text-white">{service.title}</h4>
-                            <span className="font-bold text-blue-400 text-lg md:hidden">${service.price}</span>
+                            <span className="font-bold text-blue-400 text-lg md:hidden">Ksh.{service.price}</span>
                           </div>
                           <p className="text-slate-400 text-sm leading-relaxed mb-3">{service.description}</p>
                           <div className="flex items-center gap-3">
@@ -295,7 +323,7 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
                         </div>
 
                         <div className="flex md:flex-col items-center gap-4 border-t md:border-t-0 md:border-l border-slate-800 pt-4 md:pt-0 md:pl-6 md:w-48 flex-shrink-0">
-                          <span className="hidden md:block font-bold text-2xl text-white">${service.price}</span>
+                          <span className="hidden md:block font-bold text-2xl text-white">Ksh.{service.price}</span>
                           <Button
                             variant={isAdded ? "secondary" : "primary"}
                             className={cn("w-full transition-all", isAdded ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/20" : "")}
@@ -386,12 +414,12 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
                       {selectedServicesList.map(item => (
                         <div key={item.id} className="flex justify-between text-sm">
                           <span className="text-white">{item.title}</span>
-                          <span className="text-slate-400 font-mono">${item.price}</span>
+                          <span className="text-slate-400 font-mono">Ksh.{item.price}</span>
                         </div>
                       ))}
                       <div className="border-t border-slate-800 pt-3 flex justify-between font-bold text-base">
                         <span className="text-white">Total</span>
-                        <span className="text-emerald-400">${totalAmount}</span>
+                        <span className="text-emerald-400">Ksh.{totalAmount}</span>
                       </div>
                     </div>
                   </div>
@@ -424,7 +452,7 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
                   <Smartphone className="text-emerald-500" size={32} />
                 </div>
                 <h3 className="text-xl font-bold text-white mb-1">M-Pesa Payment</h3>
-                <p className="text-slate-400 text-sm">Enter your M-Pesa number to pay <span className="text-white font-bold">${totalAmount}</span></p>
+                <p className="text-slate-400 text-sm">Enter your M-Pesa number to pay <span className="text-white font-bold">Ksh.{totalAmount}</span></p>
               </div>
 
               <div className="space-y-4">
@@ -447,10 +475,15 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
                 <Button
                   className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-900/20"
                   onClick={handlePay}
-                  disabled={phoneNumber.length < 9}
+                  disabled={phoneNumber.length < 9 || creatingBooking}
                 >
-                  Pay Now
+                  {creatingBooking ? 'Processing...' : 'Pay Now'}
                 </Button>
+                {paymentError && (
+                  <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+                    {paymentError}
+                  </div>
+                )}
                 <button
                   onClick={() => setPaymentStep('summary')}
                   className="w-full text-center text-sm text-slate-500 hover:text-slate-300 mt-2"
@@ -490,7 +523,7 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
               </div>
               <h3 className="text-2xl font-bold text-white mb-2">Booking Confirmed!</h3>
               <p className="text-slate-400 text-sm mb-6 max-w-xs">
-                Your payment of <span className="text-white font-bold">${totalAmount}</span> was successful. The provider has been notified.
+                Your payment of <span className="text-white font-bold">Ksh.{totalAmount}</span> was successful. The provider has been notified.
               </p>
 
               <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 w-full mb-6 text-left">
@@ -499,7 +532,7 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
                   <span>Date</span>
                 </div>
                 <div className="flex justify-between text-sm text-slate-300 font-mono">
-                  <span>QDH{Math.random().toString(36).substr(2, 8).toUpperCase()}</span>
+                  <span>{transactionId ? transactionId.toString().slice(-10).toUpperCase() : 'MPESA'}</span>
                   <span>{new Date().toLocaleDateString()}</span>
                 </div>
               </div>

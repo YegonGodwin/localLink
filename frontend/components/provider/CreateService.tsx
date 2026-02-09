@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Card, Button, cn } from '../Layout';
 import {
   ChevronRight, Home, UploadCloud, X, Bold, Italic, List,
-  AlignLeft, DollarSign, Tag, Clock, Calendar, CheckSquare, Square, Loader2
+  AlignLeft, Tag, Clock, Calendar, CheckSquare, Square, Loader2
 } from 'lucide-react';
 
 interface CreateServiceProps {
@@ -226,7 +226,7 @@ export const CreateService: React.FC<CreateServiceProps> = ({ onCancel, onSucces
       <Card>
         <div className="flex items-center gap-3 mb-6">
           <div className="w-10 h-10 rounded-lg bg-blue-600/10 flex items-center justify-center text-blue-500">
-            <DollarSign size={20} />
+            Ksh.
           </div>
           <h3 className="text-lg font-bold text-white">Pricing & Skills</h3>
         </div>
@@ -261,7 +261,7 @@ export const CreateService: React.FC<CreateServiceProps> = ({ onCancel, onSucces
           <div className="space-y-2">
             <label className="text-sm font-medium text-slate-300">Amount</label>
             <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-bold">$</span>
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-bold">Ksh.</span>
               <input
                 type="number"
                 placeholder="0.00"

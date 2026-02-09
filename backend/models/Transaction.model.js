@@ -18,12 +18,67 @@ const transactionSchema = new mongoose.Schema(
         status: {
             type: String,
             required: true,
-            enum: ["COMPLETED", "PENDING", "FAILED"],
+            enum: ["COMPLETED", "PENDING", "FAILED", "REFUNDED"],
             default: "PENDING",
         },
         description: {
             type: String,
             required: true,
+        },
+        paymentProvider: {
+            type: String,
+            default: null,
+        },
+        phoneNumber: {
+            type: String,
+            default: null,
+        },
+        checkoutRequestId: {
+            type: String,
+            default: null,
+        },
+        merchantRequestId: {
+            type: String,
+            default: null,
+        },
+        mpesaReceiptNumber: {
+            type: String,
+            default: null,
+        },
+        accountReference: {
+            type: String,
+            default: null,
+        },
+        resultCode: {
+            type: Number,
+            default: null,
+        },
+        resultDesc: {
+            type: String,
+            default: null,
+        },
+        metadata: {
+            type: mongoose.Schema.Types.Mixed,
+            default: null,
+        },
+        rawCallback: {
+            type: mongoose.Schema.Types.Mixed,
+            default: null,
+        },
+        services: [
+            {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: "Service",
+            },
+        ],
+        provider: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null,
+        },
+        bookingCreated: {
+            type: Boolean,
+            default: false,
         },
         date: {
             type: Date,

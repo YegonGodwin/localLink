@@ -103,7 +103,7 @@ export const ServiceRequests: React.FC<ServiceRequestsProps> = ({ onMessageProvi
                 </div>
               </div>
               <div className="flex items-center gap-3 md:self-center self-end">
-                <span className="font-bold text-lg">${booking.price}</span>
+                <span className="font-bold text-lg">Ksh.{booking.price}</span>
                 <Button
                   variant="secondary"
                   className="text-sm flex items-center gap-2"

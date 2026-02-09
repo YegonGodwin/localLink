@@ -52,7 +52,7 @@ export interface Transaction {
   id: string;
   date: string;
   amount: number;
-  status: 'COMPLETED' | 'PENDING' | 'FAILED';
+  status: 'COMPLETED' | 'PENDING' | 'FAILED' | 'REFUNDED';
   description: string;
   user: string;
 }
