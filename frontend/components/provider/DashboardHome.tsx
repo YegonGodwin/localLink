@@ -117,7 +117,7 @@ export const DashboardHome: React.FC<DashboardHomeProps> = ({ user }) => {
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Total Earnings', value: loadingTransactions ? '...' : `$${stats.totalEarnings.toLocaleString()}`, icon: DollarSign, color: 'text-emerald-400' },
+          { label: 'Total Earnings', value: loadingTransactions ? '...' : `Ksh ${stats.totalEarnings.toLocaleString()}`, icon: DollarSign, color: 'text-emerald-400' },
           { label: 'Active Jobs', value: loadingBookings ? '...' : stats.activeJobs.toString(), icon: Briefcase, color: 'text-blue-400' },
           { label: 'Total Clients', value: loadingBookings ? '...' : stats.uniqueClients.toString(), icon: Users, color: 'text-purple-400' },
           { label: 'Rating', value: user.verified ? '4.9' : '—', icon: TrendingUp, color: 'text-yellow-400' },
@@ -147,8 +147,8 @@ export const DashboardHome: React.FC<DashboardHomeProps> = ({ user }) => {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData}>
                   <XAxis dataKey="name" stroke="#475569" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#475569" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `$${value}`} />
-                  <Tooltip
+                  <YAxis stroke="#475569" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `Ksh ${value}`} />
+                  <Tooltip  
                     contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#f1f5f9' }}
                     itemStyle={{ color: '#f1f5f9' }}
                   />

@@ -120,7 +120,7 @@ export const ServiceRequests: React.FC<ServiceRequestsProps> = ({ onMessageUser 
                 <p className="text-slate-400 text-sm mb-3">Requested by <span className="text-white font-medium">{booking.consumerName}</span></p>
                 <div className="flex gap-4 text-xs text-slate-500 font-medium">
                   <span className="flex items-center gap-1 bg-slate-800 px-2 py-1 rounded"><Calendar size={12} /> {new Date(booking.date).toLocaleDateString()}</span>
-                  <span className="flex items-center gap-1 bg-slate-800 px-2 py-1 rounded"><DollarSign size={12} /> Ksh.{booking.price}</span>
+                  <span className="flex items-center gap-1 bg-slate-800 px-2 py-1 rounded"><DollarSign size={12} /> Ksh {booking.price}</span>
                 </div>
               </div>
               <div className="flex gap-2 w-full md:w-auto">

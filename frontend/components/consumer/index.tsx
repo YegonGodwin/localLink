@@ -40,7 +40,7 @@ export const ConsumerDashboard: React.FC<ConsumerProps> = ({ user, currentView, 
     setBookingCart([]);
     setShowBookingModal(false);
     setSelectedService(null);
-    setCurrentView('requests');
+    currentView('requests');
   };
 
   // View Routing Logic

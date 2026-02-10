@@ -149,7 +149,7 @@ export const MyServices: React.FC<MyServicesProps> = ({ user, onCreateClick }) =
 
                      {/* Price Tag */}
                      <div className="absolute top-3 right-3 bg-slate-950/90 backdrop-blur-md px-3 py-1.5 rounded-lg border border-slate-800 shadow-xl">
-                        <span className="text-white font-bold">Ksh.{service.price}</span>
+                        <span className="text-white font-bold">Ksh {service.price}</span>
                         <span className="text-xs text-slate-400 font-medium">/hr</span>
                      </div>
                   </div>

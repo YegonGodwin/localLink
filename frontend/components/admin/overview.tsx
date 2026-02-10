@@ -99,7 +99,7 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ user }) => {
                 <span className="text-xs font-mono text-slate-500 flex items-center gap-1">Live <ArrowUpRight size={12} /></span>
               </div>
               <h3 className="text-3xl font-bold text-white mb-1">
-                ${Number(overview?.totalVolume || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                Ksh {Number(overview?.totalVolume || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
               </h3>
               <p className="text-slate-400 text-sm">Total Platform Volume</p>
             </Card>
@@ -130,7 +130,7 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({ user }) => {
                         <p className="text-xs text-slate-500">{tx.user} - {new Date(tx.date).toLocaleDateString()}</p>
                       </div>
                       <div className="text-right">
-                        <p className="font-mono font-medium text-white">${tx.amount.toFixed(2)}</p>
+                        <p className="font-mono font-medium text-white">Ksh {tx.amount.toFixed(2)}</p>
                         <span className={cn("text-[10px] uppercase font-bold",
                           tx.status === 'COMPLETED' ? 'text-emerald-500' :
                             tx.status === 'PENDING' ? 'text-amber-500' : 'text-red-500'

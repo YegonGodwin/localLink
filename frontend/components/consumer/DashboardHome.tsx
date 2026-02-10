@@ -206,7 +206,7 @@ export const DashboardHome: React.FC<DashboardHomeProps> = ({ user }) => {
                       <div className="w-1/4 text-slate-300 text-sm">{new Date(payment.date).toLocaleDateString()}</div>
                       <div className="w-1/4 text-white font-medium text-sm">{payment.user}</div>
                       <div className="w-1/4 text-slate-400 text-sm">{payment.description}</div>
-                      <div className="w-1/4 text-right text-white font-mono text-sm">Ksh.{payment.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                      <div className="w-1/4 text-right text-white font-mono text-sm">Ksh {payment.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
                     </div>
                   ))}
                 </div>

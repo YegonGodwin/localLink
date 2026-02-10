@@ -75,7 +75,7 @@ export const Payments: React.FC = () => {
                     <div className="w-1/5 text-white font-medium text-sm">{payment.user}</div>
                     <div className="w-1/5 text-slate-400 text-sm">{payment.description}</div>
                     <div className="w-1/5 text-slate-300 text-sm capitalize">{payment.status?.toLowerCase() || 'pending'}</div>
-                    <div className="w-1/5 text-right text-white font-mono text-sm">Ksh.{payment.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
+                    <div className="w-1/5 text-right text-white font-mono text-sm">Ksh {payment.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
                   </div>
                 ))}
               </div>

@@ -116,7 +116,7 @@ export const AdminTransactions: React.FC = () => {
                     </Badge>
                   </td>
                   <td className="p-4 text-right text-white font-mono text-sm">
-                    ${tx.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                    Ksh {tx.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </td>
                 </tr>
               ))

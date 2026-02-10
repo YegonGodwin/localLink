@@ -75,19 +75,19 @@ export const Earnings: React.FC = () => {
         <Card className="bg-emerald-900/10 border-emerald-500/20">
            <span className="text-sm text-emerald-500 font-medium uppercase tracking-wider">Available Balance</span>
            <div className="text-3xl font-bold text-white mt-1">
-             {loading ? '...' : `$${totals.available.toFixed(2)}`}
+             {loading ? '...' : `Ksh ${totals.available.toFixed(2)}`}
            </div>
         </Card>
         <Card>
            <span className="text-sm text-slate-500 font-medium uppercase tracking-wider">Pending Clearance</span>
            <div className="text-3xl font-bold text-white mt-1">
-             {loading ? '...' : `$${totals.pending.toFixed(2)}`}
+             {loading ? '...' : `Ksh ${totals.pending.toFixed(2)}`}
            </div>
         </Card>
         <Card>
            <span className="text-sm text-slate-500 font-medium uppercase tracking-wider">Total Withdrawn</span>
            <div className="text-3xl font-bold text-white mt-1">
-             {loading ? '...' : `$${totals.withdrawn.toFixed(2)}`}
+             {loading ? '...' : `Ksh ${totals.withdrawn.toFixed(2)}`}
            </div>
         </Card>
       </div>
@@ -126,7 +126,7 @@ export const Earnings: React.FC = () => {
                       <td className="px-6 py-4 text-sm font-mono text-slate-500">#{tx.id.toUpperCase()}</td>
                       <td className="px-6 py-4 text-sm text-slate-300">{new Date(tx.date).toLocaleDateString()}</td>
                       <td className="px-6 py-4 text-sm text-white">{tx.description}</td>
-                      <td className="px-6 py-4 text-sm text-right font-medium text-white">${tx.amount.toFixed(2)}</td>
+                      <td className="px-6 py-4 text-sm text-right font-medium text-white">Ksh ${tx.amount.toFixed(2)}</td>
                       <td className="px-6 py-4 text-right">
                          <span className={`text-xs font-bold px-2 py-1 rounded-full ${
                             tx.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-500' :

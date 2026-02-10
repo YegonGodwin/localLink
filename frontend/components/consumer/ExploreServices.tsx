@@ -185,7 +185,7 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
                         </button>
                      </div>
                      <div className="absolute bottom-3 left-3 bg-slate-950/80 backdrop-blur-md px-2 py-1 rounded text-xs font-bold text-white">
-                        {Array(Math.min(3, Math.ceil(service.price / 50))).fill('$').join('')}
+                        {Array(Math.min(3, Math.ceil(service.price / 50))).fill('Ksh').join('')}
                      </div>
                   </div>
 

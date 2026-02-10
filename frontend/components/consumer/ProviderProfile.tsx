@@ -313,7 +313,7 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
                         <div className="flex-1">
                           <div className="flex justify-between items-start mb-2">
                             <h4 className="font-bold text-lg text-white">{service.title}</h4>
-                            <span className="font-bold text-blue-400 text-lg md:hidden">Ksh.{service.price}</span>
+                            <span className="font-bold text-blue-400 text-lg md:hidden">Ksh {service.price}</span>
                           </div>
                           <p className="text-slate-400 text-sm leading-relaxed mb-3">{service.description}</p>
                           <div className="flex items-center gap-3">
@@ -323,7 +323,7 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
                         </div>
 
                         <div className="flex md:flex-col items-center gap-4 border-t md:border-t-0 md:border-l border-slate-800 pt-4 md:pt-0 md:pl-6 md:w-48 flex-shrink-0">
-                          <span className="hidden md:block font-bold text-2xl text-white">Ksh.{service.price}</span>
+                          <span className="hidden md:block font-bold text-2xl text-white">Ksh {service.price}</span>
                           <Button
                             variant={isAdded ? "secondary" : "primary"}
                             className={cn("w-full transition-all", isAdded ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/20" : "")}
