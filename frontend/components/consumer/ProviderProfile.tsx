@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Service } from '../../types';
+import { Service, User } from '../../types';
 import { Card, Button, Badge, Modal, cn } from '../Layout';
 import { ArrowLeft, Star, Phone, Mail, Globe, MapPin, CheckCircle, PlusCircle, Loader2, Smartphone, ShieldCheck, CreditCard, ChevronRight } from 'lucide-react';
 
@@ -35,6 +35,8 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [providerServices, setProviderServices] = useState<Service[]>([]);
   const [servicesLoading, setServicesLoading] = useState(true);
+  const [providerProfile, setProviderProfile] = useState<Partial<User> | null>(null);
+  const [providerLoading, setProviderLoading] = useState(true);
 
   // Load provider services from API so consumers see live listings
   useEffect(() => {
@@ -76,6 +78,30 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
 
     fetchProviderServices();
   }, [selectedService]);
+
+  useEffect(() => {
+    const fetchProviderProfile = async () => {
+      try {
+        setProviderLoading(true);
+        const res = await fetch(`/api/users/providers/${selectedService.providerId}`);
+        const data = await res.json();
+        if (res.ok) {
+          setProviderProfile(data);
+        } else {
+          setProviderProfile(null);
+        }
+      } catch (error) {
+        console.error('Error fetching provider profile:', error);
+        setProviderProfile(null);
+      } finally {
+        setProviderLoading(false);
+      }
+    };
+
+    if (selectedService.providerId) {
+      fetchProviderProfile();
+    }
+  }, [selectedService.providerId]);
 
   // Calculate cart details
   const selectedServicesList = providerServices.filter(s => bookingCart.includes(s.id));
@@ -168,6 +194,17 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
     }
   };
 
+  const providerName = providerProfile?.name || selectedService.providerName;
+  const providerAvatar = providerProfile?.avatar || selectedService.providerAvatar;
+  const providerTagline = providerProfile?.tagline || selectedService.title;
+  const providerBio = providerProfile?.bio || 'This provider has not added a bio yet.';
+  const providerCover = providerProfile?.coverImage || selectedService.image;
+  const providerPortfolio = providerProfile?.portfolio || [];
+  const providerEmail = providerProfile?.email || `contact@${providerName.toLowerCase().replace(/ /g, '').replace(/'/g, '')}.com`;
+  const providerPhone = providerProfile?.phone || '(123) 456-7890';
+  const providerWebsite = providerProfile?.website || `${providerName.toLowerCase().replace(/ /g, '').replace(/'/g, '')}.com`;
+  const providerAddress = providerProfile?.address || 'Address not provided';
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
       {/* Breadcrumb & Back */}
@@ -178,23 +215,23 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
         <span>/</span>
         <span>{selectedService.category}</span>
         <span>/</span>
-        <span className="text-white font-medium">{selectedService.providerName}</span>
+        <span className="text-white font-medium">{providerName}</span>
       </div>
 
       {/* Hero Image */}
       <div className="h-64 md:h-80 w-full rounded-2xl overflow-hidden relative">
-        <img src={selectedService.image} alt={selectedService.title} className="w-full h-full object-cover" />
+        <img src={providerCover} alt={providerName} className="w-full h-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent opacity-80"></div>
       </div>
 
       {/* Header Profile Info */}
       <div className="relative -mt-20 px-4 md:px-8 flex flex-col md:flex-row items-end md:items-center gap-6">
         <div className="w-32 h-32 rounded-xl bg-slate-800 border-4 border-slate-950 overflow-hidden shadow-2xl flex-shrink-0">
-          <img src={selectedService.providerAvatar} alt={selectedService.providerName} className="w-full h-full object-cover" />
+          <img src={providerAvatar} alt={providerName} className="w-full h-full object-cover" />
         </div>
         <div className="flex-1 mb-2">
-          <h1 className="text-3xl font-bold text-white mb-1">{selectedService.providerName}</h1>
-          <p className="text-slate-400 text-lg mb-2">{selectedService.title}</p>
+          <h1 className="text-3xl font-bold text-white mb-1">{providerName}</h1>
+          <p className="text-slate-400 text-lg mb-2">{providerTagline}</p>
           <div className="flex items-center gap-2">
             <div className="flex items-center text-yellow-400">
               <Star size={16} fill="currentColor" />
@@ -232,16 +269,16 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
             <h3 className="font-bold text-white mb-4">Contact Information</h3>
             <div className="space-y-4 text-sm">
               <div className="flex items-center gap-3 text-slate-300">
-                <Phone size={18} className="text-slate-500" /> (123) 456-7890
+                <Phone size={18} className="text-slate-500" /> {providerPhone}
               </div>
               <div className="flex items-center gap-3 text-slate-300">
-                <Mail size={18} className="text-slate-500" /> contact@{selectedService.providerName.toLowerCase().replace(/ /g, '').replace(/'/g, '')}.com
+                <Mail size={18} className="text-slate-500" /> {providerEmail}
               </div>
               <div className="flex items-center gap-3 text-slate-300">
-                <Globe size={18} className="text-slate-500" /> {selectedService.providerName.toLowerCase().replace(/ /g, '').replace(/'/g, '')}.com
+                <Globe size={18} className="text-slate-500" /> {providerWebsite}
               </div>
               <div className="flex items-center gap-3 text-slate-300">
-                <MapPin size={18} className="text-slate-500" /> 123 Main Street, New York, USA
+                <MapPin size={18} className="text-slate-500" /> {providerAddress}
               </div>
             </div>
           </Card>
@@ -285,10 +322,13 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
           {/* About */}
           {activeTab === 'About' && (
             <div id="about" className="animate-in fade-in duration-300">
-              <h3 className="text-xl font-bold text-white mb-4">About {selectedService.providerName}</h3>
+              <h3 className="text-xl font-bold text-white mb-4">About {providerName}</h3>
               <p className="text-slate-400 leading-relaxed mb-4">
-                With over 15 years of experience serving the New York area, {selectedService.providerName} is your trusted partner for all residential and commercial needs. We pride ourselves on quality workmanship, transparent pricing, and unparalleled customer service. Our team of certified and insured professionals is equipped to handle everything from routine maintenance to complex installations, ensuring every job is done right the first time.
+                {providerBio}
               </p>
+              {providerLoading && (
+                <p className="text-xs text-slate-500">Refreshing profile details...</p>
+              )}
             </div>
           )}
 
@@ -356,16 +396,20 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
           {activeTab === 'Portfolio' && (
             <div id="portfolio" className="animate-in fade-in duration-300">
               <h3 className="text-xl font-bold text-white mb-4">Portfolio</h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {[1, 2, 3, 4, 5, 6].map((i) => (
-                  <div key={i} className="aspect-square rounded-xl overflow-hidden bg-slate-800 relative group">
-                    <img src={`https://picsum.photos/seed/${selectedService.id + i}/400/400`} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <Button variant="ghost" className="text-white border border-white/30 hover:bg-white/20">View</Button>
+              {providerPortfolio.length > 0 ? (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {providerPortfolio.map((src, index) => (
+                    <div key={`${src}-${index}`} className="aspect-square rounded-xl overflow-hidden bg-slate-800 relative group">
+                      <img src={src} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <Button variant="ghost" className="text-white border border-white/30 hover:bg-white/20">View</Button>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-slate-500 text-sm">No portfolio images available yet.</div>
+              )}
             </div>
           )}
 

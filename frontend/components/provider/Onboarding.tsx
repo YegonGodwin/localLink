@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { User } from '../../types';
 import { Button, Card, cn } from '../Layout';
 import {
@@ -28,75 +28,133 @@ const Badge = ({ children, variant, className }: { children?: React.ReactNode, v
 
 const STEPS = ['Identity', 'About & Contact', 'Portfolio', 'Review'];
 
-// --- Step Components (Moved Outside) ---
+const StepIdentity: React.FC<StepProps> = ({ formData, updateField }) => {
+   const avatarInputRef = useRef<HTMLInputElement>(null);
+   const coverInputRef = useRef<HTMLInputElement>(null);
 
-const StepIdentity: React.FC<StepProps> = ({ formData, updateField }) => (
-   <div className="space-y-6 animate-in fade-in slide-in-from-right-8 duration-300">
-      <div className="space-y-4">
-         <label className="block text-sm font-medium text-slate-300">Profile Photo</label>
-         <div className="flex items-center gap-6">
-            <div className="relative group">
-               <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-slate-800 ring-2 ring-slate-700 bg-slate-800">
-                  <img src={formData.avatar} alt="Avatar" className="w-full h-full object-cover" />
+   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>, field: 'avatar' | 'coverImage') => {
+      const file = event.target.files?.[0];
+      if (!file) {
+         return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+         updateField(field, reader.result as string);
+      };
+      reader.readAsDataURL(file);
+   };
+
+   return (
+      <div className="space-y-6 animate-in fade-in slide-in-from-right-8 duration-300">
+         <input
+            type="file"
+            ref={avatarInputRef}
+            className="hidden"
+            accept="image/*"
+            onChange={(e) => handleImageUpload(e, 'avatar')}
+         />
+         <input
+            type="file"
+            ref={coverInputRef}
+            className="hidden"
+            accept="image/*"
+            onChange={(e) => handleImageUpload(e, 'coverImage')}
+         />
+
+         <div className="space-y-4">
+            <label className="block text-sm font-medium text-slate-300">Profile Photo</label>
+            <div className="flex items-center gap-6">
+               <div className="relative group">
+                  <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-slate-800 ring-2 ring-slate-700 bg-slate-800">
+                     <img src={formData.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                  </div>
+                  <button
+                     type="button"
+                     className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center rounded-full transition-opacity"
+                     onClick={() => avatarInputRef.current?.click()}
+                  >
+                     <Camera className="text-white" size={24} />
+                  </button>
                </div>
-               <button className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center rounded-full transition-opacity">
-                  <Camera className="text-white" size={24} />
-               </button>
-            </div>
-            <div className="flex-1">
-               <Button variant="secondary" className="mb-2">Upload New</Button>
-               <p className="text-xs text-slate-500">Recommended: 400x400px. JPG, PNG or GIF.</p>
-            </div>
-         </div>
-      </div>
-
-      <div className="space-y-4">
-         <label className="block text-sm font-medium text-slate-300">Cover Image</label>
-         <div className="h-32 rounded-xl overflow-hidden relative group bg-slate-800 border border-slate-700">
-            <img src={formData.coverImage} className="w-full h-full object-cover opacity-60" />
-            <div className="absolute inset-0 flex items-center justify-center">
-               <Button variant="secondary" className="bg-slate-900/80 backdrop-blur-sm border-slate-600">
-                  <UploadCloud size={16} className="mr-2" /> Change Cover
-               </Button>
+               <div className="flex-1">
+                  <Button
+                     variant="secondary"
+                     className="mb-2"
+                     onClick={() => avatarInputRef.current?.click()}
+                  >
+                     Upload New
+                  </Button>
+                  <p className="text-xs text-slate-500">Recommended: 400x400px. JPG, PNG or GIF.</p>
+               </div>
             </div>
          </div>
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+         <div className="space-y-4">
+            <label className="block text-sm font-medium text-slate-300">Cover Image</label>
+            <div
+               className="h-32 rounded-xl overflow-hidden relative group bg-slate-800 border border-slate-700 cursor-pointer"
+               onClick={() => coverInputRef.current?.click()}
+            >
+               <img src={formData.coverImage} className="w-full h-full object-cover opacity-60" />
+               <div className="absolute inset-0 flex items-center justify-center">
+                  <Button
+                     variant="secondary"
+                     className="bg-slate-900/80 backdrop-blur-sm border-slate-600"
+                     onClick={(event) => {
+                        event.stopPropagation();
+                        coverInputRef.current?.click();
+                     }}
+                  >
+                     <UploadCloud size={16} className="mr-2" /> Change Cover
+                  </Button>
+               </div>
+            </div>
+         </div>
+
+         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+               <label className="text-sm font-medium text-slate-300">Business / Display Name <span className="text-red-400">*</span></label>
+               <input
+                  value={formData.name}
+                  onChange={(e) => updateField('name', e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-3 text-white focus:border-blue-500 outline-none"
+                  placeholder="e.g. John's Electrical"
+               />
+            </div>
+            <div className="space-y-2">
+               <label className="text-sm font-medium text-slate-300">Category <span className="text-red-400">*</span></label>
+               <select
+                  value={formData.category}
+                  onChange={(e) => updateField('category', e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-3 text-white focus:border-blue-500 outline-none"
+               >
+                  <option value="Plumbing">Plumbing</option>
+                  <option value="Cleaning">Cleaning</option>
+                  <option value="Electrical">Electrical</option>
+                  <option value="Gardening">Gardening</option>
+                  <option value="Tutoring">Tutoring</option>
+                  <option value="IT services">IT services</option>
+                  <option value="Digital marketing & Strategy">Digital Marketing & Strategy</option>
+                  <option value="Web development & Programming">Web Development & Programming</option>
+                  <option value="Social media management & marketing">Social Media management & Marketing</option>
+                  <option value="App & software development">App & Software Development</option>
+                  <option value="Graphic designing & branding">Graphic Designing & Branding</option>
+                  <option value="Other">Other</option>
+               </select>
+            </div>
+         </div>
          <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-300">Business / Display Name <span className="text-red-400">*</span></label>
+            <label className="text-sm font-medium text-slate-300">Professional Title / Tagline</label>
             <input
-               value={formData.name}
-               onChange={(e) => updateField('name', e.target.value)}
+               value={formData.tagline}
+               onChange={(e) => updateField('tagline', e.target.value)}
                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-3 text-white focus:border-blue-500 outline-none"
-               placeholder="e.g. John's Electrical"
+               placeholder="e.g. Expert Residential Electrician"
             />
          </div>
-         <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-300">Category <span className="text-red-400">*</span></label>
-            <select
-               value={formData.category}
-               onChange={(e) => updateField('category', e.target.value)}
-               className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-3 text-white focus:border-blue-500 outline-none"
-            >
-               <option value="Plumbing">Plumbing</option>
-               <option value="Cleaning">Cleaning</option>
-               <option value="Electrical">Electrical</option>
-               <option value="Gardening">Gardening</option>
-            </select>
-         </div>
       </div>
-      <div className="space-y-2">
-         <label className="text-sm font-medium text-slate-300">Professional Title / Tagline</label>
-         <input
-            value={formData.tagline}
-            onChange={(e) => updateField('tagline', e.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-4 py-3 text-white focus:border-blue-500 outline-none"
-            placeholder="e.g. Expert Residential Electrician"
-         />
-      </div>
-   </div>
-);
+   );
+};
 
 const StepAbout: React.FC<StepProps> = ({ formData, updateField }) => (
    <div className="space-y-6 animate-in fade-in slide-in-from-right-8 duration-300">
@@ -178,29 +236,89 @@ const StepAbout: React.FC<StepProps> = ({ formData, updateField }) => (
    </div>
 );
 
-const StepPortfolio: React.FC<StepProps> = ({ formData }) => (
-   <div className="space-y-6 animate-in fade-in slide-in-from-right-8 duration-300">
-      <div className="text-center p-8 border-2 border-dashed border-slate-800 rounded-2xl bg-slate-950/50 hover:border-blue-500/50 hover:bg-slate-950 transition-all cursor-pointer">
-         <div className="w-16 h-16 bg-slate-900 rounded-full flex items-center justify-center mx-auto mb-4">
-            <ImageIcon className="text-blue-500" size={32} />
-         </div>
-         <h3 className="text-lg font-bold text-white mb-1">Upload Work Samples</h3>
-         <p className="text-slate-500 text-sm mb-4">Showcase your best work. High quality images increase trust.</p>
-         <Button variant="secondary">Select Images</Button>
-      </div>
+const StepPortfolio: React.FC<StepProps> = ({ formData, updateField }) => {
+   const portfolioInputRef = useRef<HTMLInputElement>(null);
+   const portfolioItems = formData.portfolio || [];
 
-      <div className="grid grid-cols-3 gap-4">
-         {[1, 2, 3].map((i) => (
-            <div key={i} className="aspect-square bg-slate-900 rounded-lg relative group overflow-hidden border border-slate-800">
-               <img src={`https://picsum.photos/seed/${i + 50}/300/300`} className="w-full h-full object-cover" />
-               <button className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                  <X size={12} />
-               </button>
+   const readFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsDataURL(file);
+   });
+
+   const handlePortfolioUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const files = event.target.files;
+      if (!files || files.length === 0) {
+         return;
+      }
+
+      try {
+         const nextImages = await Promise.all(Array.from(files).map(readFileAsDataUrl));
+         updateField('portfolio', [...portfolioItems, ...nextImages]);
+      } catch (error) {
+         console.error('Portfolio upload error:', error);
+         alert('Failed to read one or more images.');
+      } finally {
+         if (portfolioInputRef.current) {
+            portfolioInputRef.current.value = '';
+         }
+      }
+   };
+
+   const handleRemove = (index: number) => {
+      updateField('portfolio', portfolioItems.filter((_, i) => i !== index));
+   };
+
+   return (
+      <div className="space-y-6 animate-in fade-in slide-in-from-right-8 duration-300">
+         <input
+            type="file"
+            ref={portfolioInputRef}
+            className="hidden"
+            accept="image/*"
+            multiple
+            onChange={handlePortfolioUpload}
+         />
+         <div
+            className="text-center p-8 border-2 border-dashed border-slate-800 rounded-2xl bg-slate-950/50 hover:border-blue-500/50 hover:bg-slate-950 transition-all cursor-pointer"
+            onClick={() => portfolioInputRef.current?.click()}
+         >
+            <div className="w-16 h-16 bg-slate-900 rounded-full flex items-center justify-center mx-auto mb-4">
+               <ImageIcon className="text-blue-500" size={32} />
             </div>
-         ))}
+            <h3 className="text-lg font-bold text-white mb-1">Upload Work Samples</h3>
+            <p className="text-slate-500 text-sm mb-4">Showcase your best work. High quality images increase trust.</p>
+            <Button
+               variant="secondary"
+               onClick={(event) => {
+                  event.stopPropagation();
+                  portfolioInputRef.current?.click();
+               }}
+            >
+               Select Images
+            </Button>
+         </div>
+
+         {portfolioItems.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+               {portfolioItems.map((src, index) => (
+                  <div key={`${src}-${index}`} className="aspect-square bg-slate-900 rounded-lg relative group overflow-hidden border border-slate-800">
+                     <img src={src} className="w-full h-full object-cover" />
+                     <button
+                        type="button"
+                        className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => handleRemove(index)}
+                     >
+                        <X size={12} />
+                     </button>
+                  </div>
+               ))}
+            </div>
+         )}
       </div>
-   </div>
-);
+   );
+};
 
 const StepReview: React.FC = () => (
    <div className="space-y-6 animate-in fade-in slide-in-from-right-8 duration-300 text-center py-8">

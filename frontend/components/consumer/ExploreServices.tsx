@@ -15,6 +15,7 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
    const [searchQuery, setSearchQuery] = useState('');
    const [location, setLocation] = useState(user?.location || 'New York, NY');
    const [isLocating, setIsLocating] = useState(false);
+   const [expandedProviderId, setExpandedProviderId] = useState<string | null>(null);
 
    const fetchServices = async () => {
       try {
@@ -96,6 +97,27 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
       return matchesSearch && matchesCategory;
    });
 
+   const providers = filteredServices.reduce((acc, service) => {
+      const providerId = service.providerId || `unknown-${service.id}`;
+      if (!acc[providerId]) {
+         acc[providerId] = {
+            providerId,
+            providerName: service.providerName,
+            providerAvatar: service.providerAvatar,
+            services: []
+         };
+      }
+      acc[providerId].services.push(service);
+      return acc;
+   }, {} as Record<string, { providerId: string; providerName: string; providerAvatar: string; services: Service[] }>);
+
+   const providerCards = Object.values(providers).map(provider => {
+      const featuredService = provider.services[0];
+      const minPrice = provider.services.reduce((min, s) => Math.min(min, s.price), provider.services[0]?.price || 0);
+      const uniqueCategories = Array.from(new Set(provider.services.map(s => s.category))).slice(0, 3);
+      return { ...provider, featuredService, minPrice, uniqueCategories };
+   });
+
    return (
       <div className="space-y-8">
          {/* Header */}
@@ -153,7 +175,7 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
 
          {/* Main Content: Count & Sorting */}
          <div className="flex justify-between items-center text-sm">
-            <span className="text-slate-400">Showing <span className="text-white font-bold">{filteredServices.length}</span> of <span className="text-white font-bold">142</span> providers</span>
+            <span className="text-slate-400">Showing <span className="text-white font-bold">{providerCards.length}</span> of <span className="text-white font-bold">{providerCards.length}</span> providers</span>
             <div className="flex items-center gap-2">
                <button className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-slate-300">
                   Recommended <ChevronDown size={14} />
@@ -168,24 +190,24 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
                   <Loader2 size={40} className="animate-spin text-blue-500" />
                   <p>Finding top-rated services...</p>
                </div>
-            ) : filteredServices.length === 0 ? (
+            ) : providerCards.length === 0 ? (
                <div className="col-span-full py-20 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col items-center justify-center text-center p-8">
                   <Search size={48} className="text-slate-700 mb-4" />
                   <h3 className="text-xl font-bold text-white mb-2">No results found</h3>
                   <p className="text-slate-400 max-w-sm">Try adjusting your filters or searching for something else.</p>
                </div>
-            ) : filteredServices.map((service) => (
-               <div key={service.id} className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden hover:border-slate-700 transition-all group relative">
+            ) : providerCards.map((provider) => (
+               <div key={provider.providerId} className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden hover:border-slate-700 transition-all group relative">
                   {/* Image Section */}
                   <div className="h-48 relative overflow-hidden">
-                     <img src={service.image} alt={service.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                     <img src={provider.featuredService?.image} alt={provider.featuredService?.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                      <div className="absolute top-3 right-3">
                         <button className="p-2 bg-slate-950/50 backdrop-blur-md rounded-full text-white hover:bg-slate-950 transition-colors">
                            <Heart size={16} />
                         </button>
                      </div>
                      <div className="absolute bottom-3 left-3 bg-slate-950/80 backdrop-blur-md px-2 py-1 rounded text-xs font-bold text-white">
-                        {Array(Math.min(3, Math.ceil(service.price / 50))).fill('Ksh').join('')}
+                        From Ksh {provider.minPrice}
                      </div>
                   </div>
 
@@ -193,38 +215,59 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
                   <div className="p-5">
                      <div className="flex justify-between items-start mb-2">
                         <div>
-                           <h3 className="font-bold text-lg text-white mb-1">{service.providerName}</h3>
+                           <h3 className="font-bold text-lg text-white mb-1">{provider.providerName}</h3>
                            <p className="text-sm text-slate-400 flex items-center gap-1.5">
-                              {service.category} <span className="w-1 h-1 bg-slate-600 rounded-full"></span> 2.5km away
+                              {provider.uniqueCategories.join(', ')} <span className="w-1 h-1 bg-slate-600 rounded-full"></span> 2.5km away
                            </p>
                         </div>
-                        <img src={service.providerAvatar} alt={service.providerName} className="w-10 h-10 rounded-full border-2 border-slate-800" />
+                        <img src={provider.providerAvatar} alt={provider.providerName} className="w-10 h-10 rounded-full border-2 border-slate-800" />
                      </div>
 
                      <div className="flex gap-2">
                         <Button
                            variant="secondary"
                            className="flex-1 py-2 text-xs bg-slate-800/50 hover:bg-slate-800"
-                           onClick={() => onMessageProvider(service.providerId)}
+                           onClick={() => onMessageProvider(provider.providerId)}
                         >
                            <MessageSquare size={14} className="mr-2" /> Message
                         </Button>
                         <Button
                            variant="primary"
                            className="flex-1 py-2 text-xs"
-                           onClick={() => onSelectService(service)}
+                           onClick={() => setExpandedProviderId(prev => prev === provider.providerId ? null : provider.providerId)}
                         >
-                           View Profile
+                           {expandedProviderId === provider.providerId ? 'Hide Services' : 'View Services'}
                         </Button>
                      </div>
 
                      <div className="border-t border-slate-800 mt-4 pt-4 flex items-center justify-between">
                         <div className="flex items-center gap-1.5">
                            <Star size={16} className="text-yellow-400 fill-yellow-400" />
-                           <span className="font-bold text-white">{service.rating}</span>
-                           <span className="text-slate-500 text-sm">({service.reviews})</span>
+                           <span className="font-bold text-white">{provider.featuredService?.rating || 0}</span>
+                           <span className="text-slate-500 text-sm">({provider.featuredService?.reviews || 0})</span>
                         </div>
+                        <span className="text-xs text-slate-500">{provider.services.length} service{provider.services.length === 1 ? '' : 's'}</span>
                      </div>
+
+                     {expandedProviderId === provider.providerId && (
+                        <div className="mt-4 space-y-3 border-t border-slate-800 pt-4">
+                           {provider.services.map(service => (
+                              <div key={service.id} className="flex items-center justify-between gap-3 bg-slate-950/40 border border-slate-800 rounded-lg p-3">
+                                 <div className="flex-1">
+                                    <p className="text-sm font-semibold text-white">{service.title}</p>
+                                    <p className="text-xs text-slate-500">{service.category} · Ksh {service.price}</p>
+                                 </div>
+                                 <Button
+                                    variant="secondary"
+                                    className="text-xs px-3"
+                                    onClick={() => onSelectService(service)}
+                                 >
+                                    View Profile
+                                 </Button>
+                              </div>
+                           ))}
+                        </div>
+                     )}
                   </div>
                </div>
             ))}

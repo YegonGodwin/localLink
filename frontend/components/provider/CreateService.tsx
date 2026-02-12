@@ -140,11 +140,18 @@ export const CreateService: React.FC<CreateServiceProps> = ({ onCancel, onSucces
                 onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))}
               >
                 <option value="">Select a category</option>
-                <option value="Plumbing">Plumbing</option>
-                <option value="Cleaning">Cleaning</option>
-                <option value="Gardening">Gardening</option>
-                <option value="Electrical">Electrical</option>
-                <option value="Moving">Moving</option>
+                  <option value="Plumbing">Plumbing</option>
+                  <option value="Cleaning">Cleaning</option>
+                  <option value="Electrical">Electrical</option>
+                  <option value="Gardening">Gardening</option>
+                  <option value="Tutoring">Tutoring</option>
+                  <option value="IT services">IT services</option>
+                  <option value="Digital marketing & Strategy">Digital Marketing & Strategy</option>
+                  <option value="Web development & Programming">Web Development & Programming</option>
+                  <option value="Social media management & marketing">Social Media management & Marketing</option>
+                  <option value="App & software development">App & Software Development</option>
+                  <option value="Graphic designing & branding">Graphic Designing & Branding</option>
+                  <option value="Other">Other</option>
               </select>
             </div>
             <div className="space-y-2">
