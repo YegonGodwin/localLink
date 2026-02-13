@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.env
+venv/
+models/*.pkl
+models/*.h5
+models/*.pb
+.pytest_cache/
+.coverage
