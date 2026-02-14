@@ -9,3 +9,11 @@ models/*.h5
 models/*.pb
 .pytest_cache/
 .coverage
+
+evaluate_production.py
+evaluator.py
+FIXING_MODELS.md
+inspect_models.py
+test_recommendations.py
+TESTING_GUIDE.md
+

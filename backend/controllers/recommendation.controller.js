@@ -1,9 +1,13 @@
 import recommendationClient from '../utils/recommendationClient.js';
+import recommendationMonitor from '../utils/recommendationMonitor.js';
 import Service from '../models/Service.model.js';
 import Booking from '../models/Booking.model.js';
 
 // Get recommended services for a user
 export const getRecommendations = async (req, res) => {
+  const startTime = Date.now();
+  let usedFallback = false;
+  
   try {
     const userId = req.user.id;
     const { limit = 10, model = 'hybrid' } = req.query;
@@ -36,8 +40,14 @@ export const getRecommendations = async (req, res) => {
       data: enrichedRecommendations,
       modelUsed: recommendations.model_used
     });
+    
+    // Record success
+    const responseTime = Date.now() - startTime;
+    recommendationMonitor.recordRequest(true, responseTime, usedFallback);
+    
   } catch (error) {
     console.error('Error getting recommendations:', error);
+    usedFallback = true;
     
     // Fallback to popular services if recommendation service fails
     const fallbackServices = await Service.find({ isActive: true })
@@ -52,6 +62,10 @@ export const getRecommendations = async (req, res) => {
       modelUsed: 'fallback',
       message: 'Using fallback recommendations'
     });
+    
+    // Record fallback
+    const responseTime = Date.now() - startTime;
+    recommendationMonitor.recordRequest(false, responseTime, usedFallback);
   }
 };
 
@@ -195,6 +209,29 @@ export const checkRecommendationServiceHealth = async (req, res) => {
     res.status(503).json({
       success: false,
       message: 'Recommendation service unavailable',
+      error: error.message
+    });
+  }
+};
+
+
+// Get recommendation system metrics
+export const getRecommendationMetrics = async (req, res) => {
+  try {
+    const metrics = recommendationMonitor.getMetrics();
+    const serviceHealth = await recommendationMonitor.checkServiceHealth();
+    
+    res.json({
+      success: true,
+      data: {
+        metrics,
+        serviceHealth
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching metrics',
       error: error.message
     });
   }

@@ -14,24 +14,44 @@ class RecommendationEngine:
     
     def _load_models(self):
         """Load trained models from disk"""
-        try:
-            content_path = os.path.join(self.models_dir, "content_based.pkl")
-            if os.path.exists(content_path):
-                with open(content_path, "rb") as f:
-                    self.content_model = pickle.load(f)
-            
-            collab_path = os.path.join(self.models_dir, "collaborative.pkl")
-            if os.path.exists(collab_path):
-                with open(collab_path, "rb") as f:
-                    self.collaborative_model = pickle.load(f)
-            
-            hybrid_path = os.path.join(self.models_dir, "hybrid.pkl")
-            if os.path.exists(hybrid_path):
-                with open(hybrid_path, "rb") as f:
-                    self.hybrid_model = pickle.load(f)
-                    
-        except Exception as e:
-            print(f"Error loading models: {e}")
+        # Try different pickle loading strategies
+        content_path = os.path.join(self.models_dir, "content_based.pkl")
+        if os.path.exists(content_path):
+            self.content_model = self._safe_load_pickle(content_path, "content_based")
+        
+        collab_path = os.path.join(self.models_dir, "collaborative.pkl")
+        if os.path.exists(collab_path):
+            self.collaborative_model = self._safe_load_pickle(collab_path, "collaborative")
+        
+        hybrid_path = os.path.join(self.models_dir, "hybrid.pkl")
+        if os.path.exists(hybrid_path):
+            self.hybrid_model = self._safe_load_pickle(hybrid_path, "hybrid")
+    
+    def _safe_load_pickle(self, filepath: str, model_name: str):
+        """Safely load pickle file with multiple strategies"""
+        strategies = [
+            # Strategy 1: Standard pickle load
+            lambda f: pickle.load(f),
+            # Strategy 2: Load with latin1 encoding (Python 2 compatibility)
+            lambda f: pickle.load(f, encoding='latin1'),
+            # Strategy 3: Load with bytes encoding
+            lambda f: pickle.load(f, encoding='bytes'),
+        ]
+        
+        for i, strategy in enumerate(strategies):
+            try:
+                with open(filepath, "rb") as f:
+                    model = strategy(f)
+                    print(f"✓ Loaded {model_name} model (strategy {i+1})")
+                    return model
+            except Exception as e:
+                if i == len(strategies) - 1:
+                    print(f"✗ Failed to load {model_name} model: {e}")
+                    print(f"  File: {filepath}")
+                    print(f"  Try re-saving the model with: pickle.dump(model, file, protocol=4)")
+                continue
+        
+        return None
     
     def models_loaded(self) -> Dict[str, bool]:
         """Check which models are loaded"""

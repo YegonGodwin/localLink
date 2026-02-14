@@ -3,9 +3,11 @@ import {
   getRecommendations,
   getSimilarServices,
   getPersonalizedRecommendations,
-  checkRecommendationServiceHealth
+  checkRecommendationServiceHealth,
+  getRecommendationMetrics
 } from '../controllers/recommendation.controller.js';
 import { protect } from '../middleware/auth.middleware.js';
+import { authorize } from '../middleware/role.middleware.js';
 
 const router = express.Router();
 
@@ -23,5 +25,8 @@ router.get('/personalized', getPersonalizedRecommendations);
 
 // Health check for recommendation service
 router.get('/health', checkRecommendationServiceHealth);
+
+// Get metrics (admin only)
+router.get('/metrics', authorize('admin'), getRecommendationMetrics);
 
 export default router;
