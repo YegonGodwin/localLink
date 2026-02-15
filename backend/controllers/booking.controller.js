@@ -2,6 +2,7 @@ import Booking from "../models/Booking.model.js";
 import Service from "../models/Service.model.js";
 import Transaction from "../models/Transaction.model.js";
 import mongoose from 'mongoose';
+import { syncEscrowStateForBookingStatus } from "../services/escrow.service.js";
 
 // @desc    Create new booking
 // @route   POST /api/bookings
@@ -137,22 +138,44 @@ export const updateBookingStatus = async (req, res) => {
         const nextStatus = status || booking.status;
         booking.status = nextStatus;
         const updatedBooking = await booking.save();
+        const escrow = await syncEscrowStateForBookingStatus({
+            bookingId: booking._id,
+            bookingStatus: nextStatus,
+            actorId: req.user._id,
+        });
 
         if (status === "COMPLETED" || status === "CANCELLED") {
+            const isEscrowFlow = Boolean(escrow);
             const providerTxStatus = status === "COMPLETED" ? "COMPLETED" : "FAILED";
             const consumerTxStatus = status === "CANCELLED" ? "REFUNDED" : providerTxStatus;
             try {
-                await Transaction.findOneAndUpdate(
-                    { booking: booking._id, user: booking.provider },
-                    {
-                        $set: {
-                            status: providerTxStatus,
-                            amount: booking.price,
-                            description: `Escrow for Booking #${booking._id.toString().slice(-6).toUpperCase()}`,
+                if (isEscrowFlow) {
+                    if (status === "CANCELLED") {
+                        await Transaction.findOneAndUpdate(
+                            { booking: booking._id, escrow: escrow._id, user: booking.provider },
+                            {
+                                $set: {
+                                    status: "FAILED",
+                                    amount: escrow.netAmount,
+                                    description: `Escrow hold cancelled for Booking #${booking._id.toString().slice(-6).toUpperCase()}`,
+                                },
+                            },
+                            { upsert: false, new: true }
+                        );
+                    }
+                } else {
+                    await Transaction.findOneAndUpdate(
+                        { booking: booking._id, user: booking.provider },
+                        {
+                            $set: {
+                                status: providerTxStatus,
+                                amount: booking.price,
+                                description: `Escrow for Booking #${booking._id.toString().slice(-6).toUpperCase()}`,
+                            },
                         },
-                    },
-                    { upsert: true, new: true }
-                );
+                        { upsert: true, new: true }
+                    );
+                }
 
                 // attempt to include the original service title in the consumer description
                 let serviceTitle = 'service';
@@ -163,17 +186,19 @@ export const updateBookingStatus = async (req, res) => {
                     // ignore and fall back to generic
                 }
 
-                await Transaction.findOneAndUpdate(
-                    { booking: booking._id, user: booking.consumer },
-                    {
-                        $set: {
-                            status: consumerTxStatus,
-                            amount: booking.price,
-                            description: `Payment for ${serviceTitle}`,
+                if (!isEscrowFlow || status === "CANCELLED") {
+                    await Transaction.findOneAndUpdate(
+                        { booking: booking._id, user: booking.consumer },
+                        {
+                            $set: {
+                                status: consumerTxStatus,
+                                amount: booking.price,
+                                description: `Payment for ${serviceTitle}`,
+                            },
                         },
-                    },
-                    { upsert: true, new: true }
-                );
+                        { upsert: !isEscrowFlow, new: true }
+                    );
+                }
             } catch (error) {
                 console.error("Failed to update transaction for booking:", error);
             }

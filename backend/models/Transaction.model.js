@@ -6,6 +6,11 @@ const transactionSchema = new mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: "Booking",
         },
+        escrow: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Escrow",
+            default: null,
+        },
         user: {
             type: mongoose.Schema.Types.ObjectId,
             required: true,
@@ -20,6 +25,18 @@ const transactionSchema = new mongoose.Schema(
             required: true,
             enum: ["COMPLETED", "PENDING", "FAILED", "REFUNDED"],
             default: "PENDING",
+        },
+        transactionType: {
+            type: String,
+            enum: [
+                "CUSTOMER_PAYMENT",
+                "ESCROW_HOLD",
+                "PROVIDER_PAYOUT",
+                "PLATFORM_COMMISSION",
+                "REFUND",
+                "ADJUSTMENT",
+            ],
+            default: "ADJUSTMENT",
         },
         description: {
             type: String,

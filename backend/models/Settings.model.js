@@ -6,6 +6,21 @@ const settingsSchema = new mongoose.Schema(
             type: Number,
             default: 5,
         },
+        commissionType: {
+            type: String,
+            enum: ["PERCENTAGE", "FIXED"],
+            default: "PERCENTAGE",
+        },
+        commissionValue: {
+            type: Number,
+            default: 5,
+            min: 0,
+        },
+        escrowAutoReleaseHours: {
+            type: Number,
+            default: 48,
+            min: 1,
+        },
         supportEmail: {
             type: String,
             default: "support@locallink.com",

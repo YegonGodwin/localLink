@@ -15,10 +15,23 @@ export const getSettings = async (req, res) => {
 // @route   PUT /api/admin/settings
 // @access  Private/Admin
 export const updateSettings = async (req, res) => {
-    const { platformFee, supportEmail, maintenanceMode, termsUrl } = req.body;
+    const {
+        platformFee,
+        commissionType,
+        commissionValue,
+        escrowAutoReleaseHours,
+        supportEmail,
+        maintenanceMode,
+        termsUrl,
+    } = req.body;
 
     const update = {};
     if (platformFee !== undefined) update.platformFee = Number(platformFee);
+    if (commissionType !== undefined) update.commissionType = commissionType;
+    if (commissionValue !== undefined) update.commissionValue = Number(commissionValue);
+    if (escrowAutoReleaseHours !== undefined) {
+        update.escrowAutoReleaseHours = Number(escrowAutoReleaseHours);
+    }
     if (supportEmail !== undefined) update.supportEmail = supportEmail;
     if (maintenanceMode !== undefined) update.maintenanceMode = Boolean(maintenanceMode);
     if (termsUrl !== undefined) update.termsUrl = termsUrl;
