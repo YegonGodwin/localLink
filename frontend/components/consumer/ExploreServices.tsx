@@ -9,6 +9,19 @@ interface ExploreServicesProps {
    onMessageProvider: (userId: string) => void;
 }
 
+interface ProviderGroup {
+   providerId: string;
+   providerName: string;
+   providerAvatar: string;
+   services: Service[];
+}
+
+interface ProviderCard extends ProviderGroup {
+   featuredService?: Service;
+   minPrice: number;
+   uniqueCategories: string[];
+}
+
 export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelectService, onMessageProvider }) => {
    const [services, setServices] = useState<Service[]>([]);
    const [loading, setLoading] = useState(true);
@@ -97,7 +110,7 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
       return matchesSearch && matchesCategory;
    });
 
-   const providers = filteredServices.reduce((acc, service) => {
+   const providers = filteredServices.reduce<Record<string, ProviderGroup>>((acc, service) => {
       const providerId = service.providerId || `unknown-${service.id}`;
       if (!acc[providerId]) {
          acc[providerId] = {
@@ -109,9 +122,10 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
       }
       acc[providerId].services.push(service);
       return acc;
-   }, {} as Record<string, { providerId: string; providerName: string; providerAvatar: string; services: Service[] }>);
+   }, {});
 
-   const providerCards = Object.values(providers).map(provider => {
+   const providerValues = Object.values(providers) as ProviderGroup[];
+   const providerCards: ProviderCard[] = providerValues.map((provider) => {
       const featuredService = provider.services[0];
       const minPrice = provider.services.reduce((min, s) => Math.min(min, s.price), provider.services[0]?.price || 0);
       const uniqueCategories = Array.from(new Set(provider.services.map(s => s.category))).slice(0, 3);

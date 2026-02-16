@@ -16,6 +16,7 @@ import paymentRoutes from "./routes/payment.routes.js";
 import chatRoutes from "./routes/chat.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import recommendationRoutes from "./routes/recommendation.routes.js";
+import { startEscrowJobs } from "./jobs/escrow.jobs.js";
 
 // Sockets
 import chatSocket from "./sockets/chat.socket.js";
@@ -62,4 +63,5 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 5000;
 httpServer.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
+    startEscrowJobs();
 });

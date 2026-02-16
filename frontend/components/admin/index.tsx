@@ -4,6 +4,7 @@ import { AdminOverview } from './overview';
 import { AdminUsers } from './users';
 import { AdminTransactions } from './transactions';
 import { AdminModeration } from './moderation';
+import { AdminEscrowOps } from './escrowOps';
 import { AdminSettings } from './settings';
 
 interface AdminProps {
@@ -18,6 +19,10 @@ export const AdminDashboard: React.FC<AdminProps> = ({ user, currentView }) => {
 
   if (currentView === 'transactions') {
     return <AdminTransactions />;
+  }
+
+  if (currentView === 'escrow-ops') {
+    return <AdminEscrowOps />;
   }
 
   if (currentView === 'moderation') {

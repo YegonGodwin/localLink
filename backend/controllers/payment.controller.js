@@ -5,9 +5,15 @@ import Transaction from "../models/Transaction.model.js";
 import Escrow from "../models/Escrow.model.js";
 import LedgerEntry from "../models/LedgerEntry.model.js";
 import Payout from "../models/Payout.model.js";
+import Dispute from "../models/Dispute.model.js";
 import Settings from "../models/Settings.model.js";
 import { processEscrowAutoReleaseApprovals } from "../services/escrow.service.js";
 import User from "../models/User.model.js";
+import {
+    roundToCurrency,
+    computeCommission,
+    canRetryPayout,
+} from "../utils/paymentEscrow.helpers.js";
 
 const MPESA_BASE_URL =
     process.env.MPESA_ENV === "production"
@@ -63,8 +69,6 @@ const extractCallbackMetadata = (callback) => {
     }, {});
 };
 
-const roundToCurrency = (value) => Math.round((value + Number.EPSILON) * 100) / 100;
-
 const getEscrowConfig = async () => {
     const settings = await Settings.findOne().lean();
 
@@ -78,28 +82,6 @@ const getEscrowConfig = async () => {
     const holdHours = Number.isFinite(configuredHours) && configuredHours > 0 ? configuredHours : 48;
 
     return { commissionType: type, commissionValue, holdHours };
-};
-
-const computeCommission = ({ grossAmount, commissionType, commissionValue }) => {
-    if (!Number.isFinite(grossAmount) || grossAmount <= 0) {
-        return { grossAmount: 0, commissionAmount: 0, netAmount: 0 };
-    }
-
-    let commissionAmount = 0;
-    if (commissionType === "FIXED") {
-        commissionAmount = commissionValue;
-    } else {
-        commissionAmount = (grossAmount * commissionValue) / 100;
-    }
-
-    commissionAmount = roundToCurrency(Math.max(0, Math.min(grossAmount, commissionAmount)));
-    const netAmount = roundToCurrency(Math.max(0, grossAmount - commissionAmount));
-
-    return {
-        grossAmount: roundToCurrency(grossAmount),
-        commissionAmount,
-        netAmount,
-    };
 };
 
 const getB2CConfig = () => {
@@ -125,6 +107,15 @@ const getB2CConfig = () => {
     };
 };
 
+const getPayoutRetryConfig = () => {
+    const maxRetries = Number(process.env.ESCROW_PAYOUT_MAX_RETRIES ?? 3);
+    const cooldownMinutes = Number(process.env.ESCROW_PAYOUT_RETRY_COOLDOWN_MINUTES ?? 5);
+    return {
+        maxRetries: Number.isFinite(maxRetries) && maxRetries >= 0 ? maxRetries : 3,
+        cooldownMinutes: Number.isFinite(cooldownMinutes) && cooldownMinutes >= 0 ? cooldownMinutes : 5,
+    };
+};
+
 const extractB2CResult = (payload) => payload?.Result || payload?.result || payload || {};
 
 const extractResultParameters = (result) => {
@@ -133,6 +124,35 @@ const extractResultParameters = (result) => {
         if (item?.Key) acc[item.Key] = item.Value;
         return acc;
     }, {});
+};
+
+const isEscrowParticipant = (escrow, user) => {
+    if (!escrow || !user) return false;
+    if (user.role === "ADMIN") return true;
+    const userId = user._id.toString();
+    return escrow.consumer.toString() === userId || escrow.provider.toString() === userId;
+};
+
+const createLedgerEntryOnce = async ({ idempotencyKey, ...entry }) => {
+    if (!idempotencyKey) {
+        return LedgerEntry.create(entry);
+    }
+
+    const existing = await LedgerEntry.findOne({
+        escrow: entry.escrow,
+        entryType: entry.entryType,
+        "metadata.idempotencyKey": idempotencyKey,
+    }).select("_id");
+
+    if (existing) return existing;
+
+    return LedgerEntry.create({
+        ...entry,
+        metadata: {
+            ...(entry.metadata || {}),
+            idempotencyKey,
+        },
+    });
 };
 
 const setEscrowReleasedState = async ({ escrow, payout, callbackPayload }) => {
@@ -166,7 +186,29 @@ const setEscrowReleasedState = async ({ escrow, payout, callbackPayload }) => {
         );
     }
 
-    await LedgerEntry.create({
+    const existingCommissionLedger = await LedgerEntry.findOne({
+        escrow: escrow._id,
+        entryType: "COMMISSION_RECOGNIZED",
+    }).select("_id");
+
+    if (!existingCommissionLedger && escrow.commissionAmount > 0) {
+        await LedgerEntry.create({
+            escrow: escrow._id,
+            booking: escrow.booking,
+            transaction: null,
+            entryType: "COMMISSION_RECOGNIZED",
+            direction: "CREDIT",
+            amount: escrow.commissionAmount,
+            description: `Commission recognized for booking ${escrow.booking}`,
+            metadata: {
+                commissionType: escrow.commissionType,
+                commissionValue: escrow.commissionValue,
+            },
+        });
+    }
+
+    await createLedgerEntryOnce({
+        idempotencyKey: `payout-completed:${payout._id}`,
         escrow: escrow._id,
         booking: escrow.booking,
         transaction: escrow.providerEscrowTransaction || null,
@@ -194,7 +236,8 @@ const setEscrowPayoutFailedState = async ({ escrow, payout, callbackPayload, rea
         }
     );
 
-    await LedgerEntry.create({
+    await createLedgerEntryOnce({
+        idempotencyKey: `payout-failed:${payout?._id || "unknown"}`,
         escrow: escrow._id,
         booking: escrow.booking,
         transaction: escrow.providerEscrowTransaction || null,
@@ -212,6 +255,29 @@ const initiateB2CPayoutForEscrow = async (escrow) => {
     const allowedStates = ["RELEASE_APPROVED", "PAYOUT_FAILED"];
     if (!allowedStates.includes(escrow.state)) {
         throw new Error(`Escrow is not releasable from state ${escrow.state}`);
+    }
+
+    const { maxRetries, cooldownMinutes } = getPayoutRetryConfig();
+    const failedPayoutsCount = await Payout.countDocuments({ escrow: escrow._id, status: "FAILED" });
+    const lastFailedPayout = await Payout.findOne({ escrow: escrow._id, status: "FAILED" })
+        .sort({ updatedAt: -1 })
+        .select("updatedAt");
+
+    const retryDecision = canRetryPayout({
+        escrowState: escrow.state,
+        failedPayoutsCount,
+        lastFailedPayoutAt: lastFailedPayout?.updatedAt || null,
+        maxRetries,
+        cooldownMinutes,
+        now: new Date(),
+    });
+
+    if (!retryDecision.allowed && retryDecision.reason === "RETRY_LIMIT_REACHED") {
+        throw new Error("Escrow payout retry limit reached");
+    }
+
+    if (!retryDecision.allowed && retryDecision.reason === "COOLDOWN_ACTIVE") {
+        throw new Error(`Escrow payout retry cooldown active. Try again in ${retryDecision.waitSeconds}s`);
     }
 
     const existingInFlightPayout = await Payout.findOne({
@@ -255,7 +321,8 @@ const initiateB2CPayoutForEscrow = async (escrow) => {
         }
     );
 
-    await LedgerEntry.create({
+    await createLedgerEntryOnce({
+        idempotencyKey: `payout-initiated:${payout._id}`,
         escrow: escrow._id,
         booking: escrow.booking,
         transaction: escrow.providerEscrowTransaction || null,
@@ -496,7 +563,7 @@ const createBookingsForTransaction = async (transaction) => {
 
             await Transaction.updateOne(
                 { _id: transaction._id, bookingCreated: { $ne: true } },
-                { $set: { bookingCreated: true } },
+                { $set: { bookingCreated: true, bookingCreationInProgress: false } },
                 { session }
             );
         });
@@ -676,10 +743,26 @@ export const handleMpesaCallback = async (req, res) => {
     }
 
     if (isSuccess && !transaction.bookingCreated && transaction.status === "COMPLETED") {
-        try {
-            await createBookingsForTransaction(transaction);
-        } catch (error) {
-            console.error("Failed to create bookings for transaction:", error);
+        const claimed = await Transaction.findOneAndUpdate(
+            {
+                _id: transaction._id,
+                bookingCreated: { $ne: true },
+                bookingCreationInProgress: { $ne: true },
+            },
+            { $set: { bookingCreationInProgress: true } },
+            { new: true }
+        );
+
+        if (claimed) {
+            try {
+                await createBookingsForTransaction(claimed);
+            } catch (error) {
+                await Transaction.updateOne(
+                    { _id: claimed._id },
+                    { $set: { bookingCreationInProgress: false } }
+                );
+                console.error("Failed to create bookings for transaction:", error);
+            }
         }
     }
 
@@ -720,13 +803,13 @@ export const releaseEscrowToProvider = async (req, res) => {
 // @desc    Process B2C payout queue for approved escrows
 // @route   POST /api/payments/escrow/process-release-queue
 // @access  Private/Admin
-export const processEscrowReleaseQueue = async (req, res) => {
-    const limit = Math.min(Number(req.body?.limit) || 20, 100);
+export const processEscrowReleaseQueueBatch = async ({ limit = 20 } = {}) => {
+    const safeLimit = Math.min(Number(limit) || 20, 100);
     const escrows = await Escrow.find({
         state: { $in: ["RELEASE_APPROVED", "PAYOUT_FAILED"] },
     })
         .sort({ updatedAt: 1 })
-        .limit(limit);
+        .limit(safeLimit);
 
     let initiated = 0;
     let inFlight = 0;
@@ -748,12 +831,22 @@ export const processEscrowReleaseQueue = async (req, res) => {
         }
     }
 
-    return res.status(200).json({
-        message: "Escrow release queue processed",
+    return {
         scanned: escrows.length,
         initiated,
         inFlight,
         failed,
+    };
+};
+
+// @desc    Process B2C payout queue for approved escrows
+// @route   POST /api/payments/escrow/process-release-queue
+// @access  Private/Admin
+export const processEscrowReleaseQueue = async (req, res) => {
+    const outcome = await processEscrowReleaseQueueBatch({ limit: req.body?.limit });
+    return res.status(200).json({
+        message: "Escrow release queue processed",
+        ...outcome,
     });
 };
 
@@ -780,10 +873,6 @@ export const handleMpesaB2CResultCallback = async (req, res) => {
         return res.status(200).json({ message: "Payout not found" });
     }
 
-    if (["SUCCESS", "FAILED"].includes(payout.status)) {
-        return res.status(200).json({ message: "B2C callback already processed" });
-    }
-
     const escrow = await Escrow.findById(payout.escrow);
     if (!escrow) {
         await Payout.updateOne(
@@ -803,6 +892,18 @@ export const handleMpesaB2CResultCallback = async (req, res) => {
     const resultCode = Number(result?.ResultCode);
     const isSuccess = resultCode === 0;
     const params = extractResultParameters(result);
+
+    if (payout.status === "SUCCESS") {
+        return res.status(200).json({ message: "B2C callback already processed" });
+    }
+
+    if (payout.status === "FAILED" && !isSuccess) {
+        return res.status(200).json({ message: "B2C failure callback already processed" });
+    }
+
+    if (payout.status === "FAILED" && isSuccess && escrow.state === "RELEASED") {
+        return res.status(200).json({ message: "Late success ignored; escrow already released" });
+    }
 
     await Payout.updateOne(
         { _id: payout._id },
@@ -886,4 +987,456 @@ export const handleMpesaB2CTimeoutCallback = async (req, res) => {
     }
 
     return res.status(200).json({ message: "B2C timeout callback processed" });
+};
+
+// @desc    Get escrow reconciliation details
+// @route   GET /api/payments/escrow/:escrowId/reconciliation
+// @access  Private/Admin
+export const getEscrowReconciliation = async (req, res) => {
+    const { escrowId } = req.params;
+    const escrow = await Escrow.findById(escrowId)
+        .populate("booking", "status service consumer provider price")
+        .populate("consumer", "name email")
+        .populate("provider", "name email")
+        .lean();
+
+    if (!escrow) {
+        return res.status(404).json({ message: "Escrow not found" });
+    }
+
+    const [payouts, ledgerEntries] = await Promise.all([
+        Payout.find({ escrow: escrow._id }).sort({ createdAt: -1 }).lean(),
+        LedgerEntry.find({ escrow: escrow._id }).sort({ createdAt: 1 }).lean(),
+    ]);
+
+    const totals = ledgerEntries.reduce(
+        (acc, entry) => {
+            if (entry.direction === "CREDIT") acc.credits += entry.amount || 0;
+            if (entry.direction === "DEBIT") acc.debits += entry.amount || 0;
+            return acc;
+        },
+        { credits: 0, debits: 0 }
+    );
+
+    const balance = roundToCurrency((totals.credits || 0) - (totals.debits || 0));
+
+    return res.status(200).json({
+        escrow: {
+            id: escrow._id,
+            state: escrow.state,
+            holdUntil: escrow.holdUntil,
+            releasedAt: escrow.releasedAt,
+            grossAmount: escrow.grossAmount,
+            commissionAmount: escrow.commissionAmount,
+            netAmount: escrow.netAmount,
+            commissionType: escrow.commissionType,
+            commissionValue: escrow.commissionValue,
+            consumer: escrow.consumer,
+            provider: escrow.provider,
+            booking: escrow.booking,
+        },
+        payouts: payouts.map((payout) => ({
+            id: payout._id,
+            amount: payout.amount,
+            status: payout.status,
+            resultCode: payout.resultCode,
+            resultDesc: payout.resultDesc,
+            originatorConversationId: payout.originatorConversationId,
+            conversationId: payout.conversationId,
+            createdAt: payout.createdAt,
+            updatedAt: payout.updatedAt,
+        })),
+        ledger: {
+            entries: ledgerEntries.map((entry) => ({
+                id: entry._id,
+                entryType: entry.entryType,
+                direction: entry.direction,
+                amount: entry.amount,
+                description: entry.description,
+                createdAt: entry.createdAt,
+                metadata: entry.metadata || null,
+            })),
+            totals: {
+                credits: roundToCurrency(totals.credits),
+                debits: roundToCurrency(totals.debits),
+                balance,
+            },
+        },
+    });
+};
+
+// @desc    List disputes (admin/global, or participant filtered)
+// @route   GET /api/payments/disputes
+// @access  Private
+export const getDisputes = async (req, res) => {
+    const { status, escrowId, bookingId } = req.query;
+    const query = {};
+
+    if (status) query.status = status;
+    if (escrowId) query.escrow = escrowId;
+    if (bookingId) query.booking = bookingId;
+
+    const disputes = await Dispute.find(query)
+        .sort({ createdAt: -1 })
+        .populate("raisedBy", "name email role")
+        .populate("resolvedBy", "name email role")
+        .populate("escrow", "state holdUntil grossAmount commissionAmount netAmount")
+        .populate("booking", "status");
+
+    if (req.user.role === "ADMIN") {
+        return res.status(200).json(disputes);
+    }
+
+    const filtered = disputes.filter((dispute) => {
+        const escrow = dispute.escrow;
+        if (!escrow) return false;
+        return isEscrowParticipant(escrow, req.user);
+    });
+
+    return res.status(200).json(filtered);
+};
+
+// @desc    Escrow operations summary for admin dashboard
+// @route   GET /api/payments/escrow/ops-summary
+// @access  Private/Admin
+export const getEscrowOpsSummary = async (req, res) => {
+    const [held, releaseApproved, releasing, released, disputed, payoutFailed, openDisputes] =
+        await Promise.all([
+            Escrow.countDocuments({ state: "HELD" }),
+            Escrow.countDocuments({ state: "RELEASE_APPROVED" }),
+            Escrow.countDocuments({ state: "RELEASING" }),
+            Escrow.countDocuments({ state: "RELEASED" }),
+            Escrow.countDocuments({ state: "DISPUTED" }),
+            Escrow.countDocuments({ state: "PAYOUT_FAILED" }),
+            Dispute.countDocuments({ status: "OPEN" }),
+        ]);
+
+    return res.status(200).json({
+        held,
+        releaseApproved,
+        releasing,
+        released,
+        disputed,
+        payoutFailed,
+        openDisputes,
+    });
+};
+
+// @desc    Raise escrow dispute
+// @route   POST /api/payments/escrow/:escrowId/disputes
+// @access  Private
+export const raiseEscrowDispute = async (req, res) => {
+    const { escrowId } = req.params;
+    const { reason, evidence } = req.body;
+
+    if (!reason || !reason.trim()) {
+        return res.status(400).json({ message: "Dispute reason is required" });
+    }
+
+    const escrow = await Escrow.findById(escrowId);
+    if (!escrow) {
+        return res.status(404).json({ message: "Escrow not found" });
+    }
+
+    if (!isEscrowParticipant(escrow, req.user)) {
+        return res.status(403).json({ message: "Not authorized to dispute this escrow" });
+    }
+
+    if (["RELEASED", "CANCELLED", "REFUNDED"].includes(escrow.state)) {
+        return res.status(400).json({ message: `Cannot dispute escrow in state ${escrow.state}` });
+    }
+
+    const openDispute = await Dispute.findOne({ escrow: escrow._id, status: "OPEN" });
+    if (openDispute) {
+        return res.status(409).json({ message: "An open dispute already exists for this escrow" });
+    }
+
+    const dispute = await Dispute.create({
+        escrow: escrow._id,
+        booking: escrow.booking,
+        raisedBy: req.user._id,
+        raisedByRole: req.user.role,
+        reason: reason.trim(),
+        evidence: evidence || null,
+        status: "OPEN",
+    });
+
+    await Escrow.updateOne(
+        { _id: escrow._id },
+        {
+            $set: {
+                state: "DISPUTED",
+                metadata: {
+                    ...(escrow.metadata || {}),
+                    disputeOpen: true,
+                    disputeId: dispute._id,
+                    disputedAt: new Date(),
+                },
+            },
+        }
+    );
+
+    await LedgerEntry.create({
+        escrow: escrow._id,
+        booking: escrow.booking,
+        transaction: null,
+        entryType: "ADJUSTMENT",
+        direction: "CREDIT",
+        amount: 0,
+        description: `Dispute opened for booking ${escrow.booking}`,
+        metadata: { disputeId: dispute._id, raisedBy: req.user._id, reason: reason.trim() },
+    });
+
+    return res.status(201).json(dispute);
+};
+
+// @desc    List escrow disputes
+// @route   GET /api/payments/escrow/:escrowId/disputes
+// @access  Private
+export const listEscrowDisputes = async (req, res) => {
+    const { escrowId } = req.params;
+    const escrow = await Escrow.findById(escrowId);
+    if (!escrow) {
+        return res.status(404).json({ message: "Escrow not found" });
+    }
+
+    if (!isEscrowParticipant(escrow, req.user)) {
+        return res.status(403).json({ message: "Not authorized to view disputes for this escrow" });
+    }
+
+    const disputes = await Dispute.find({ escrow: escrow._id })
+        .sort({ createdAt: -1 })
+        .populate("raisedBy", "name email role")
+        .populate("resolvedBy", "name email role");
+
+    return res.status(200).json(disputes);
+};
+
+// @desc    Resolve escrow dispute
+// @route   POST /api/payments/disputes/:disputeId/resolve
+// @access  Private/Admin
+export const resolveEscrowDispute = async (req, res) => {
+    const { disputeId } = req.params;
+    const { action, note, holdExtensionHours } = req.body;
+
+    if (!["RELEASE", "CANCEL", "KEEP_HOLD"].includes(action)) {
+        return res.status(400).json({ message: "Invalid dispute resolution action" });
+    }
+
+    const dispute = await Dispute.findById(disputeId);
+    if (!dispute) {
+        return res.status(404).json({ message: "Dispute not found" });
+    }
+
+    if (dispute.status !== "OPEN") {
+        return res.status(400).json({ message: "Dispute is already resolved" });
+    }
+
+    const escrow = await Escrow.findById(dispute.escrow);
+    if (!escrow) {
+        return res.status(404).json({ message: "Escrow not found for dispute" });
+    }
+
+    const now = new Date();
+    let nextEscrowState = escrow.state;
+    let nextHoldUntil = escrow.holdUntil;
+
+    if (action === "RELEASE") {
+        if (["RELEASED", "CANCELLED", "REFUNDED"].includes(escrow.state)) {
+            return res.status(400).json({ message: `Cannot release escrow in state ${escrow.state}` });
+        }
+        nextEscrowState = "RELEASE_APPROVED";
+    } else if (action === "CANCEL") {
+        if (["RELEASED", "CANCELLED", "REFUNDED"].includes(escrow.state)) {
+            return res.status(400).json({ message: `Cannot cancel escrow in state ${escrow.state}` });
+        }
+        nextEscrowState = "CANCELLED";
+    } else {
+        const extension = Math.max(0, Number(holdExtensionHours) || 0);
+        nextEscrowState = "HELD";
+        if (extension > 0) {
+            const baseline = new Date(Math.max(now.getTime(), new Date(escrow.holdUntil).getTime()));
+            nextHoldUntil = new Date(baseline.getTime() + extension * 60 * 60 * 1000);
+        }
+    }
+
+    await Escrow.updateOne(
+        { _id: escrow._id },
+        {
+            $set: {
+                state: nextEscrowState,
+                holdUntil: nextHoldUntil,
+                metadata: {
+                    ...(escrow.metadata || {}),
+                    disputeOpen: false,
+                    disputeId: dispute._id,
+                    disputeResolvedAt: now,
+                    disputeResolutionAction: action,
+                    disputeResolutionNote: note || null,
+                    resolvedBy: req.user._id,
+                },
+            },
+        }
+    );
+
+    if (action === "CANCEL") {
+        if (escrow.providerEscrowTransaction) {
+            await Transaction.updateOne(
+                { _id: escrow.providerEscrowTransaction },
+                {
+                    $set: {
+                        status: "FAILED",
+                        description: `Escrow cancelled for Booking #${escrow.booking.toString().slice(-6).toUpperCase()}`,
+                    },
+                }
+            );
+        }
+
+        await Transaction.updateOne(
+            { _id: escrow.consumerPaymentTransaction },
+            {
+                $set: {
+                    status: "REFUNDED",
+                    transactionType: "REFUND",
+                    description: `Refund issued for Booking #${escrow.booking.toString().slice(-6).toUpperCase()}`,
+                },
+            }
+        );
+
+        await LedgerEntry.create({
+            escrow: escrow._id,
+            booking: escrow.booking,
+            transaction: escrow.consumerPaymentTransaction || null,
+            entryType: "REFUND_ISSUED",
+            direction: "DEBIT",
+            amount: escrow.grossAmount,
+            description: `Refund issued for booking ${escrow.booking}`,
+            metadata: { disputeId: dispute._id },
+        });
+    }
+
+    dispute.status = "RESOLVED";
+    dispute.resolutionAction = action;
+    dispute.resolutionNote = note || null;
+    dispute.resolvedBy = req.user._id;
+    dispute.resolvedAt = now;
+    await dispute.save();
+
+    return res.status(200).json({
+        message: "Dispute resolved",
+        dispute,
+        escrowId: escrow._id,
+        escrowState: nextEscrowState,
+        holdUntil: nextHoldUntil,
+    });
+};
+
+// @desc    Extend escrow hold window
+// @route   POST /api/payments/escrow/:escrowId/hold/extend
+// @access  Private/Admin
+export const extendEscrowHold = async (req, res) => {
+    const { escrowId } = req.params;
+    const { hours, reason } = req.body;
+
+    const extensionHours = Number(hours);
+    if (!Number.isFinite(extensionHours) || extensionHours <= 0) {
+        return res.status(400).json({ message: "A positive hold extension in hours is required" });
+    }
+
+    const escrow = await Escrow.findById(escrowId);
+    if (!escrow) {
+        return res.status(404).json({ message: "Escrow not found" });
+    }
+
+    if (["RELEASED", "CANCELLED", "REFUNDED"].includes(escrow.state)) {
+        return res.status(400).json({ message: `Cannot extend hold for escrow in state ${escrow.state}` });
+    }
+
+    const now = new Date();
+    const baseline = new Date(Math.max(now.getTime(), new Date(escrow.holdUntil).getTime()));
+    const holdUntil = new Date(baseline.getTime() + extensionHours * 60 * 60 * 1000);
+
+    await Escrow.updateOne(
+        { _id: escrow._id },
+        {
+            $set: {
+                holdUntil,
+                metadata: {
+                    ...(escrow.metadata || {}),
+                    holdExtendedAt: now,
+                    holdExtendedBy: req.user._id,
+                    holdExtensionHours: extensionHours,
+                    holdExtensionReason: reason || null,
+                },
+            },
+        }
+    );
+
+    await LedgerEntry.create({
+        escrow: escrow._id,
+        booking: escrow.booking,
+        transaction: null,
+        entryType: "ADJUSTMENT",
+        direction: "CREDIT",
+        amount: 0,
+        description: `Escrow hold extended by ${extensionHours}h for booking ${escrow.booking}`,
+        metadata: { reason: reason || null, extendedBy: req.user._id },
+    });
+
+    return res.status(200).json({
+        message: "Escrow hold extended",
+        escrowId: escrow._id,
+        holdUntil,
+    });
+};
+
+// @desc    Admin override to mark escrow releasable
+// @route   POST /api/payments/escrow/:escrowId/override-release-approval
+// @access  Private/Admin
+export const overrideEscrowReleaseApproval = async (req, res) => {
+    const { escrowId } = req.params;
+    const { reason } = req.body;
+
+    const escrow = await Escrow.findById(escrowId);
+    if (!escrow) {
+        return res.status(404).json({ message: "Escrow not found" });
+    }
+
+    if (["RELEASED", "CANCELLED", "REFUNDED"].includes(escrow.state)) {
+        return res.status(400).json({ message: `Cannot override escrow in state ${escrow.state}` });
+    }
+
+    await Escrow.updateOne(
+        { _id: escrow._id },
+        {
+            $set: {
+                state: "RELEASE_APPROVED",
+                metadata: {
+                    ...(escrow.metadata || {}),
+                    adminReleaseOverrideAt: new Date(),
+                    adminReleaseOverrideBy: req.user._id,
+                    adminReleaseOverrideReason: reason || null,
+                },
+            },
+        }
+    );
+
+    await Dispute.updateMany(
+        { escrow: escrow._id, status: "OPEN" },
+        {
+            $set: {
+                status: "REJECTED",
+                resolutionAction: "RELEASE",
+                resolutionNote: reason || "Admin release override",
+                resolvedBy: req.user._id,
+                resolvedAt: new Date(),
+            },
+        }
+    );
+
+    return res.status(200).json({
+        message: "Escrow marked as release approved",
+        escrowId: escrow._id,
+        state: "RELEASE_APPROVED",
+    });
 };

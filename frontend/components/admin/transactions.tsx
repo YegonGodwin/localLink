@@ -74,6 +74,7 @@ export const AdminTransactions: React.FC = () => {
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Transactions</h2>
       </div>
+
       <Card noPadding className="overflow-x-auto">
         <table className="w-full text-left border-collapse">
           <thead className="bg-slate-950/50 text-slate-400 text-xs uppercase">

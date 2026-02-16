@@ -78,8 +78,9 @@ export const Layout: React.FC<LayoutProps> = ({ user, onLogout, currentView, onC
         return [
           { id: 'dashboard', label: 'Overview', icon: Home },
           { id: 'users', label: 'User Management', icon: Users },
-          { id: 'moderation', label: 'Moderation', icon: Shield },
           { id: 'transactions', label: 'Transactions', icon: DollarSign },
+          { id: 'escrow-ops', label: 'Escrow Ops', icon: CreditCard },
+          { id: 'moderation', label: 'Moderation', icon: Shield },
           { id: 'settings', label: 'Platform Settings', icon: Settings },
         ];
     }

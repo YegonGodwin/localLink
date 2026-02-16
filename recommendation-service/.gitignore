@@ -16,4 +16,5 @@ FIXING_MODELS.md
 inspect_models.py
 test_recommendations.py
 TESTING_GUIDE.md
+check_model_methods.py
 
