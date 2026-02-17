@@ -1,4 +1,5 @@
 import User from "../models/User.model.js";
+import ProviderLike from "../models/ProviderLike.model.js";
 import generateToken from "../utils/generateToken.js";
 
 // @desc    Get user profile
@@ -95,11 +96,72 @@ export const getProviderById = async (req, res) => {
     const provider = await User.findOne({ _id: req.params.id, role: "PROVIDER" }).select("-password");
 
     if (provider) {
-        res.json(provider);
+        const likesCount = await ProviderLike.countDocuments({ provider: provider._id });
+        res.json({
+            ...provider.toObject(),
+            likesCount,
+        });
     } else {
         res.status(404);
         throw new Error("Provider not found");
     }
+};
+
+// @desc    Get like status for a provider profile
+// @route   GET /api/users/providers/:id/like-status
+// @access  Private/Consumer
+export const getProviderLikeStatus = async (req, res) => {
+    const provider = await User.findOne({ _id: req.params.id, role: "PROVIDER" }).select("_id");
+    if (!provider) {
+        res.status(404);
+        throw new Error("Provider not found");
+    }
+
+    const likesCount = await ProviderLike.countDocuments({ provider: provider._id });
+    const liked = Boolean(
+        await ProviderLike.findOne({
+            provider: provider._id,
+            consumer: req.user._id,
+        }).select("_id")
+    );
+
+    res.json({ liked, likesCount });
+};
+
+// @desc    Toggle like/unlike for a provider profile
+// @route   POST /api/users/providers/:id/like
+// @access  Private/Consumer
+export const toggleProviderLike = async (req, res) => {
+    if (req.user.role !== "CONSUMER") {
+        res.status(403);
+        throw new Error("Only consumers can like provider profiles");
+    }
+
+    const provider = await User.findOne({ _id: req.params.id, role: "PROVIDER" }).select("_id");
+    if (!provider) {
+        res.status(404);
+        throw new Error("Provider not found");
+    }
+
+    let liked = false;
+    const existingLike = await ProviderLike.findOne({
+        provider: provider._id,
+        consumer: req.user._id,
+    });
+
+    if (existingLike) {
+        await existingLike.deleteOne();
+        liked = false;
+    } else {
+        await ProviderLike.create({
+            provider: provider._id,
+            consumer: req.user._id,
+        });
+        liked = true;
+    }
+
+    const likesCount = await ProviderLike.countDocuments({ provider: provider._id });
+    res.json({ liked, likesCount });
 };
 
 // @desc    Get any user by ID

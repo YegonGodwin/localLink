@@ -16,6 +16,7 @@ import paymentRoutes from "./routes/payment.routes.js";
 import chatRoutes from "./routes/chat.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import recommendationRoutes from "./routes/recommendation.routes.js";
+import reviewRoutes from "./routes/review.routes.js";
 import { startEscrowJobs } from "./jobs/escrow.jobs.js";
 
 // Sockets
@@ -48,6 +49,7 @@ app.use("/api/payments", paymentRoutes);
 app.use("/api/chat", chatRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/recommendations", recommendationRoutes);
+app.use("/api/reviews", reviewRoutes);
 
 app.get("/", (req, res) => {
     res.send("LocalLink API is running!");

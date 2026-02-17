@@ -29,6 +29,7 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
    const [location, setLocation] = useState(user?.location || 'New York, NY');
    const [isLocating, setIsLocating] = useState(false);
    const [expandedProviderId, setExpandedProviderId] = useState<string | null>(null);
+   const [providerLikes, setProviderLikes] = useState<Record<string, { liked: boolean; likesCount: number; loading: boolean }>>({});
 
    const fetchServices = async () => {
       try {
@@ -61,6 +62,96 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
 
    useEffect(() => {
       fetchServices();
+   }, []);
+
+   useEffect(() => {
+      const loadProviderLikeStatuses = async () => {
+         if (user?.role !== 'CONSUMER') {
+            return;
+         }
+
+         const token = localStorage.getItem('token');
+         if (!token) {
+            return;
+         }
+
+         const providerIds = Array.from(new Set(services.map((s) => s.providerId).filter(Boolean)));
+         if (providerIds.length === 0) {
+            return;
+         }
+
+         try {
+            const results = await Promise.all(
+               providerIds.map(async (providerId) => {
+                  const res = await fetch(`/api/users/providers/${providerId}/like-status`, {
+                     headers: { Authorization: `Bearer ${token}` },
+                  });
+                  const data = await res.json();
+                  if (!res.ok) {
+                     return { providerId, liked: false, likesCount: 0 };
+                  }
+                  return {
+                     providerId,
+                     liked: Boolean(data.liked),
+                     likesCount: Number(data.likesCount || 0),
+                  };
+               })
+            );
+
+            setProviderLikes((prev) => {
+               const next = { ...prev };
+               results.forEach((item) => {
+                  next[item.providerId] = {
+                     liked: item.liked,
+                     likesCount: item.likesCount,
+                     loading: false,
+                  };
+               });
+               return next;
+            });
+         } catch (error) {
+            console.error('Error loading provider likes:', error);
+         }
+      };
+
+      loadProviderLikeStatuses();
+   }, [services, user?.role]);
+
+   useEffect(() => {
+      const handleReviewCreated = async (event: Event) => {
+         const customEvent = event as CustomEvent<{ serviceId?: string }>;
+         const serviceId = customEvent.detail?.serviceId;
+         if (!serviceId) {
+            return;
+         }
+
+         try {
+            const res = await fetch(`/api/services/${serviceId}`);
+            const data = await res.json();
+            if (!res.ok) {
+               return;
+            }
+
+            setServices((prev) =>
+               prev.map((service) =>
+                  service.id === serviceId
+                     ? {
+                        ...service,
+                        rating: data.rating ?? service.rating,
+                        reviews: data.reviews ?? service.reviews,
+                     }
+                     : service
+               )
+            );
+         } catch (error) {
+            console.error('Error refreshing service rating after review:', error);
+         }
+      };
+
+      window.addEventListener('review:created', handleReviewCreated as EventListener);
+      return () => {
+         window.removeEventListener('review:created', handleReviewCreated as EventListener);
+      };
    }, []);
 
    useEffect(() => {
@@ -131,6 +222,56 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
       const uniqueCategories = Array.from(new Set(provider.services.map(s => s.category))).slice(0, 3);
       return { ...provider, featuredService, minPrice, uniqueCategories };
    });
+
+   const handleToggleProviderLike = async (providerId: string) => {
+      if (user?.role !== 'CONSUMER') {
+         return;
+      }
+
+      const token = localStorage.getItem('token');
+      if (!token) {
+         return;
+      }
+
+      setProviderLikes((prev) => ({
+         ...prev,
+         [providerId]: {
+            liked: prev[providerId]?.liked || false,
+            likesCount: prev[providerId]?.likesCount || 0,
+            loading: true,
+         },
+      }));
+
+      try {
+         const res = await fetch(`/api/users/providers/${providerId}/like`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+         });
+         const data = await res.json();
+         if (!res.ok) {
+            throw new Error(data?.message || 'Unable to update like');
+         }
+
+         setProviderLikes((prev) => ({
+            ...prev,
+            [providerId]: {
+               liked: Boolean(data.liked),
+               likesCount: Number(data.likesCount || 0),
+               loading: false,
+            },
+         }));
+      } catch (error) {
+         console.error('Error toggling provider like:', error);
+         setProviderLikes((prev) => ({
+            ...prev,
+            [providerId]: {
+               liked: prev[providerId]?.liked || false,
+               likesCount: prev[providerId]?.likesCount || 0,
+               loading: false,
+            },
+         }));
+      }
+   };
 
    return (
       <div className="space-y-8">
@@ -212,12 +353,27 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
                </div>
             ) : providerCards.map((provider) => (
                <div key={provider.providerId} className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden hover:border-slate-700 transition-all group relative">
+                  {(() => {
+                     const likeState = providerLikes[provider.providerId];
+                     const isLiked = Boolean(likeState?.liked);
+                     const isLikeLoading = Boolean(likeState?.loading);
+                     const likesCount = Number(likeState?.likesCount || 0);
+                     return (
+                        <>
                   {/* Image Section */}
                   <div className="h-48 relative overflow-hidden">
                      <img src={provider.featuredService?.image} alt={provider.featuredService?.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                      <div className="absolute top-3 right-3">
-                        <button className="p-2 bg-slate-950/50 backdrop-blur-md rounded-full text-white hover:bg-slate-950 transition-colors">
-                           <Heart size={16} />
+                        <button
+                           className={cn(
+                              "p-2 backdrop-blur-md rounded-full transition-colors",
+                              isLiked ? "bg-rose-600/80 text-white hover:bg-rose-600" : "bg-slate-950/50 text-white hover:bg-slate-950"
+                           )}
+                           onClick={() => handleToggleProviderLike(provider.providerId)}
+                           disabled={user?.role !== 'CONSUMER' || isLikeLoading}
+                           title={isLiked ? 'Unlike provider' : 'Like provider'}
+                        >
+                           <Heart size={16} fill={isLiked ? 'currentColor' : 'none'} />
                         </button>
                      </div>
                      <div className="absolute bottom-3 left-3 bg-slate-950/80 backdrop-blur-md px-2 py-1 rounded text-xs font-bold text-white">
@@ -260,7 +416,10 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
                            <span className="font-bold text-white">{provider.featuredService?.rating || 0}</span>
                            <span className="text-slate-500 text-sm">({provider.featuredService?.reviews || 0})</span>
                         </div>
-                        <span className="text-xs text-slate-500">{provider.services.length} service{provider.services.length === 1 ? '' : 's'}</span>
+                        <div className="flex items-center gap-3">
+                           <span className="text-xs text-slate-500">{likesCount} like{likesCount === 1 ? '' : 's'}</span>
+                           <span className="text-xs text-slate-500">{provider.services.length} service{provider.services.length === 1 ? '' : 's'}</span>
+                        </div>
                      </div>
 
                      {expandedProviderId === provider.providerId && (
@@ -283,6 +442,9 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
                         </div>
                      )}
                   </div>
+                        </>
+                     );
+                  })()}
                </div>
             ))}
          </div>

@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Service, User } from '../../types';
+import { Review, Service, User } from '../../types';
 import { Card, Button, Badge, Modal, cn } from '../Layout';
 import { ArrowLeft, Star, Phone, Mail, Globe, MapPin, CheckCircle, PlusCircle, Loader2, Smartphone, ShieldCheck, CreditCard, ChevronRight } from 'lucide-react';
+import reviewService from '../../services/reviewService';
 
 interface ProviderProfileProps {
   service: Service;
+  canLike?: boolean;
   onBack: () => void;
   bookingCart: string[];
   toggleCartItem: (serviceId: string) => void;
@@ -18,6 +20,7 @@ type PaymentStep = 'summary' | 'phone' | 'processing' | 'success';
 
 export const ProviderProfile: React.FC<ProviderProfileProps> = ({
   service: selectedService,
+  canLike = false,
   onBack,
   bookingCart,
   toggleCartItem,
@@ -37,6 +40,17 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
   const [servicesLoading, setServicesLoading] = useState(true);
   const [providerProfile, setProviderProfile] = useState<Partial<User> | null>(null);
   const [providerLoading, setProviderLoading] = useState(true);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [reviewsLoading, setReviewsLoading] = useState(true);
+  const [reviewsError, setReviewsError] = useState<string | null>(null);
+  const [liked, setLiked] = useState(false);
+  const [likesCount, setLikesCount] = useState(0);
+  const [liking, setLiking] = useState(false);
+  const [likeError, setLikeError] = useState<string | null>(null);
+  const [serviceMetrics, setServiceMetrics] = useState({
+    rating: selectedService.rating || 0,
+    reviews: selectedService.reviews || 0,
+  });
 
   // Load provider services from API so consumers see live listings
   useEffect(() => {
@@ -102,6 +116,119 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
       fetchProviderProfile();
     }
   }, [selectedService.providerId]);
+
+  useEffect(() => {
+    const fetchLikeStatus = async () => {
+      if (!canLike || !selectedService.providerId) {
+        setLiked(false);
+        setLikesCount(0);
+        return;
+      }
+
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`/api/users/providers/${selectedService.providerId}/like-status`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setLiked(Boolean(data.liked));
+          setLikesCount(Number(data.likesCount || 0));
+        }
+      } catch (error) {
+        console.error('Error fetching like status:', error);
+      }
+    };
+
+    fetchLikeStatus();
+  }, [canLike, selectedService.providerId]);
+
+  const handleToggleLike = async () => {
+    if (!canLike || liking || !selectedService.providerId) {
+      return;
+    }
+
+    try {
+      setLiking(true);
+      setLikeError(null);
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/users/providers/${selectedService.providerId}/like`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.message || 'Unable to update like');
+      }
+      setLiked(Boolean(data.liked));
+      setLikesCount(Number(data.likesCount || 0));
+    } catch (error: any) {
+      setLikeError(error?.message || 'Unable to update like');
+    } finally {
+      setLiking(false);
+    }
+  };
+
+  useEffect(() => {
+    setServiceMetrics({
+      rating: selectedService.rating || 0,
+      reviews: selectedService.reviews || 0,
+    });
+  }, [selectedService.id, selectedService.rating, selectedService.reviews]);
+
+  useEffect(() => {
+    const refreshServiceMetrics = async () => {
+      try {
+        const res = await fetch(`/api/services/${selectedService.id}`);
+        const data = await res.json();
+        if (res.ok) {
+          setServiceMetrics({
+            rating: data.rating ?? 0,
+            reviews: data.reviews ?? 0,
+          });
+        }
+      } catch (error) {
+        console.error('Error refreshing service metrics:', error);
+      }
+    };
+
+    if (selectedService.id) {
+      refreshServiceMetrics();
+    }
+
+    const handleReviewCreated = (event: Event) => {
+      const customEvent = event as CustomEvent<{ serviceId?: string }>;
+      if (customEvent.detail?.serviceId === selectedService.id) {
+        refreshServiceMetrics();
+      }
+    };
+
+    window.addEventListener('review:created', handleReviewCreated as EventListener);
+    return () => {
+      window.removeEventListener('review:created', handleReviewCreated as EventListener);
+    };
+  }, [selectedService.id]);
+
+  useEffect(() => {
+    const fetchServiceReviews = async () => {
+      try {
+        setReviewsLoading(true);
+        setReviewsError(null);
+        const data = await reviewService.getServiceReviews(selectedService.id);
+        setReviews(data);
+      } catch (error: any) {
+        console.error('Error fetching reviews:', error);
+        setReviews([]);
+        setReviewsError(error?.message || 'Unable to load reviews');
+      } finally {
+        setReviewsLoading(false);
+      }
+    };
+
+    if (selectedService.id) {
+      fetchServiceReviews();
+    }
+  }, [selectedService.id]);
 
   // Calculate cart details
   const selectedServicesList = providerServices.filter(s => bookingCart.includes(s.id));
@@ -232,13 +359,28 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
         <div className="flex-1 mb-2">
           <h1 className="text-3xl font-bold text-white mb-1">{providerName}</h1>
           <p className="text-slate-400 text-lg mb-2">{providerTagline}</p>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center text-yellow-400">
               <Star size={16} fill="currentColor" />
-              <span className="ml-1 font-bold text-white">{selectedService.rating}</span>
+              <span className="ml-1 font-bold text-white">{serviceMetrics.rating}</span>
             </div>
-            <span className="text-slate-500">({selectedService.reviews} reviews)</span>
+            <span className="text-slate-500">({serviceMetrics.reviews} reviews)</span>
+            {canLike && (
+              <>
+                <Button
+                  variant={liked ? 'secondary' : 'primary'}
+                  size="sm"
+                  onClick={handleToggleLike}
+                  disabled={liking}
+                  className={liked ? 'border-rose-500/40 text-rose-300' : ''}
+                >
+                  {liking ? 'Please wait...' : liked ? 'Unlike Profile' : 'Like Profile'}
+                </Button>
+                <span className="text-slate-500 text-sm">{likesCount} like{likesCount === 1 ? '' : 's'}</span>
+              </>
+            )}
           </div>
+          {likeError && <p className="text-xs text-red-400 mt-2">{likeError}</p>}
         </div>
       </div>
 
@@ -417,25 +559,52 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
           {activeTab === 'Reviews' && (
             <div id="reviews" className="animate-in fade-in duration-300">
               <h3 className="text-xl font-bold text-white mb-4">Customer Reviews</h3>
-              <div className="space-y-4">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center font-bold text-slate-500">U{i}</div>
-                        <div>
-                          <h5 className="font-bold text-white">Satisfied Customer</h5>
-                          <p className="text-xs text-slate-500">2 days ago</p>
+              {reviewsLoading ? (
+                <div className="flex items-center gap-2 text-slate-400">
+                  <Loader2 size={18} className="animate-spin text-blue-500" />
+                  Loading reviews...
+                </div>
+              ) : reviewsError ? (
+                <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-4">
+                  {reviewsError}
+                </div>
+              ) : reviews.length === 0 ? (
+                <div className="text-slate-500 text-sm">No reviews yet for this service.</div>
+              ) : (
+                <div className="space-y-4">
+                  {reviews.map((review) => (
+                    <div key={review.id} className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-slate-800 overflow-hidden flex items-center justify-center font-bold text-slate-500">
+                            {review.consumerAvatar ? (
+                              <img src={review.consumerAvatar} alt={review.consumerName} className="w-full h-full object-cover" />
+                            ) : (
+                              review.consumerName.charAt(0).toUpperCase()
+                            )}
+                          </div>
+                          <div>
+                            <h5 className="font-bold text-white">{review.consumerName}</h5>
+                            <p className="text-xs text-slate-500">{new Date(review.createdAt).toLocaleDateString()}</p>
+                          </div>
+                        </div>
+                        <div className="flex text-yellow-400">
+                          {[1, 2, 3, 4, 5].map((value) => (
+                            <Star
+                              key={value}
+                              size={14}
+                              fill={value <= review.rating ? 'currentColor' : 'none'}
+                            />
+                          ))}
                         </div>
                       </div>
-                      <div className="flex text-yellow-400">
-                        {[1, 2, 3, 4, 5].map(s => <Star key={s} size={14} fill="currentColor" />)}
-                      </div>
+                      <p className="text-slate-400 text-sm">
+                        {review.comment || 'No comment provided.'}
+                      </p>
                     </div>
-                    <p className="text-slate-400 text-sm">Great service! The provider was on time, professional, and did an excellent job. Would definitely recommend.</p>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

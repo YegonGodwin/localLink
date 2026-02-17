@@ -48,6 +48,19 @@ export interface Booking {
   price: number;
 }
 
+export interface Review {
+  id: string;
+  bookingId: string;
+  serviceId: string;
+  providerId: string;
+  consumerId: string;
+  consumerName: string;
+  consumerAvatar: string;
+  rating: number;
+  comment: string;
+  createdAt: string;
+}
+
 export interface Transaction {
   id: string;
   date: string;

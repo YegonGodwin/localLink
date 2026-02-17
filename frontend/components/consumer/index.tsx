@@ -61,6 +61,7 @@ export const ConsumerDashboard: React.FC<ConsumerProps> = ({ user, currentView, 
       return (
         <ProviderProfile
           service={selectedService}
+          canLike
           onBack={() => { setSelectedService(null); setBookingCart([]); }}
           bookingCart={bookingCart}
           toggleCartItem={toggleCartItem}
