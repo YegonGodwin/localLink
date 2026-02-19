@@ -302,7 +302,15 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
         })
       });
 
-      const data = await res.json();
+      let data;
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(text || `Server error: ${res.status} ${res.statusText}`);
+      }
+
       if (!res.ok) {
         throw new Error(data.message || 'Failed to initiate payment');
       }

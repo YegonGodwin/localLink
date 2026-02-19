@@ -126,7 +126,7 @@ export const Earnings: React.FC = () => {
                       <td className="px-6 py-4 text-sm font-mono text-slate-500">#{tx.id.toUpperCase()}</td>
                       <td className="px-6 py-4 text-sm text-slate-300">{new Date(tx.date).toLocaleDateString()}</td>
                       <td className="px-6 py-4 text-sm text-white">{tx.description}</td>
-                      <td className="px-6 py-4 text-sm text-right font-medium text-white">Ksh ${tx.amount.toFixed(2)}</td>
+                      <td className="px-6 py-4 text-sm text-right font-medium text-white">Ksh {tx.amount.toFixed(2)}</td>
                       <td className="px-6 py-4 text-right">
                          <span className={`text-xs font-bold px-2 py-1 rounded-full ${
                             tx.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-500' :
