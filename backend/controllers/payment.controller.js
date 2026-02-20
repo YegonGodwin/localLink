@@ -42,6 +42,20 @@ const getTimestamp = () => {
     );
 };
 
+const normalizeStkCallbackUrl = (rawUrl) => {
+    if (!rawUrl) return null;
+    try {
+        const parsed = new URL(rawUrl);
+        // Common misconfiguration: callback points to /mpesa/callback instead of /api/payments/mpesa/callback
+        if (parsed.pathname === "/mpesa/callback") {
+            parsed.pathname = "/api/payments/mpesa/callback";
+        }
+        return parsed.toString();
+    } catch {
+        return rawUrl;
+    }
+};
+
 const getAccessToken = async () => {
     const key = process.env.MPESA_CONSUMER_KEY;
     const secret = process.env.MPESA_CONSUMER_SECRET;
@@ -656,7 +670,8 @@ export const initiateMpesaStkPush = async (req, res) => {
 
     const shortcode = process.env.MPESA_SHORTCODE;
     const passkey = process.env.MPESA_PASSKEY;
-    const callbackUrl = process.env.MPESA_CALLBACK_URL;
+    const configuredCallbackUrl = process.env.MPESA_CALLBACK_URL;
+    const callbackUrl = normalizeStkCallbackUrl(configuredCallbackUrl);
 
     const isDevFallback = process.env.MPESA_ENV !== "production" && 
                           (process.env.MPESA_DEV_FALLBACK === "true" || !shortcode || !passkey || !callbackUrl);
@@ -668,6 +683,12 @@ export const initiateMpesaStkPush = async (req, res) => {
             console.error("[payment] Missing M-Pesa config in non-fallback mode");
             return res.status(500).json({ message: "M-Pesa configuration is incomplete" });
         }
+    }
+
+    if (configuredCallbackUrl && callbackUrl !== configuredCallbackUrl) {
+        console.warn(
+            `[payment] Normalized MPESA_CALLBACK_URL from "${configuredCallbackUrl}" to "${callbackUrl}".`
+        );
     }
 
     const timestamp = getTimestamp();

@@ -248,38 +248,56 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
   const pollPaymentStatus = async (txId: string) => {
     const token = localStorage.getItem('token');
     const startedAt = Date.now();
-    const maxWaitMs = 120000;
+    const maxWaitMs = 180000;
+    const pollIntervalMs = 3000;
 
-    return new Promise((resolve, reject) => {
-      const intervalId = setInterval(async () => {
-        const elapsed = Date.now() - startedAt;
-        setProcessingTime(Math.min(95, Math.round((elapsed / maxWaitMs) * 95)));
+    const checkStatus = async () => {
+      const res = await fetch(`/api/transactions/${txId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.status) return null;
+      return data;
+    };
 
-        if (elapsed > maxWaitMs) {
-          clearInterval(intervalId);
-          reject(new Error('Payment confirmation timed out. Please check your phone and try again.'));
-          return;
+    while (Date.now() - startedAt <= maxWaitMs) {
+      const elapsed = Date.now() - startedAt;
+      setProcessingTime(Math.min(95, Math.round((elapsed / maxWaitMs) * 95)));
+
+      try {
+        const data = await checkStatus();
+        if (data?.status === 'COMPLETED') {
+          return data;
         }
-
-        try {
-          const res = await fetch(`/api/transactions/${txId}`, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          const data = await res.json();
-          if (res.ok && data?.status) {
-            if (data.status === 'COMPLETED') {
-              clearInterval(intervalId);
-              resolve(data);
-            } else if (data.status === 'FAILED') {
-              clearInterval(intervalId);
-              reject(new Error('Payment failed or was cancelled.'));
-            }
-          }
-        } catch (error) {
-          // Keep polling on transient errors
+        if (data?.status === 'FAILED') {
+          throw new Error('Payment failed or was cancelled.');
         }
-      }, 3000);
-    });
+      } catch (error: any) {
+        if (error?.message === 'Payment failed or was cancelled.') {
+          throw error;
+        }
+        // Keep polling on transient errors
+      }
+
+      await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+    }
+
+    // One final check to avoid false timeout when callback lands near the deadline.
+    try {
+      const finalData = await checkStatus();
+      if (finalData?.status === 'COMPLETED') {
+        return finalData;
+      }
+      if (finalData?.status === 'FAILED') {
+        throw new Error('Payment failed or was cancelled.');
+      }
+    } catch (error: any) {
+      if (error?.message === 'Payment failed or was cancelled.') {
+        throw error;
+      }
+    }
+
+    throw new Error('Payment confirmation is taking longer than expected. Please wait a moment and check your Payments page.');
   };
 
   const handlePay = async () => {

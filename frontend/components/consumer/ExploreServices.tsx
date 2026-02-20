@@ -75,14 +75,20 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
             return;
          }
 
-         const providerIds = Array.from(new Set(services.map((s) => s.providerId).filter(Boolean)));
+         const providerIds = Array.from(
+            new Set(
+               services
+                  .map((s) => s.providerId)
+                  .filter((providerId): providerId is string => typeof providerId === 'string' && providerId.length > 0)
+            )
+         );
          if (providerIds.length === 0) {
             return;
          }
 
          try {
-            const results = await Promise.all(
-               providerIds.map(async (providerId) => {
+            const results: Array<{ providerId: string; liked: boolean; likesCount: number }> = await Promise.all(
+               providerIds.map(async (providerId: string) => {
                   const res = await fetch(`/api/users/providers/${providerId}/like-status`, {
                      headers: { Authorization: `Bearer ${token}` },
                   });

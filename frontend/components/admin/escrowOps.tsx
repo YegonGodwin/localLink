@@ -212,6 +212,35 @@ export const AdminEscrowOps: React.FC = () => {
     }
   };
 
+  const overrideApprove = async () => {
+    const token = localStorage.getItem('token');
+    const escrowId = reconciliationEscrowId.trim();
+    if (!escrowId) return;
+    
+    const reason = window.prompt('Reason for manual override:');
+    if (reason === null) return;
+
+    try {
+      setIsProcessingReleaseQueue(true); // Using this as a general loading state
+      setActionError(null);
+      setActionMessage(null);
+      const res = await fetch(`/api/payments/escrow/${escrowId}/override-release-approval`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ reason: reason || 'Manual admin override' })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Failed to override approval.');
+      setActionMessage('Escrow successfully marked as RELEASE_APPROVED.');
+      await Promise.all([fetchReconciliation(), loadSummary()]);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to override approval.';
+      setActionError(message);
+    } finally {
+      setIsProcessingReleaseQueue(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -280,6 +309,17 @@ export const AdminEscrowOps: React.FC = () => {
           >
             {reconciliationLoading ? 'Loading...' : 'Fetch Reconciliation'}
           </Button>
+          
+          {reconciliationData?.escrow?.state === 'HELD' && (
+            <Button
+              variant="primary"
+              className="text-sm bg-amber-600 hover:bg-amber-700"
+              disabled={isProcessingReleaseQueue}
+              onClick={overrideApprove}
+            >
+              Override Approve
+            </Button>
+          )}
         </div>
 
         {reconciliationData && (
