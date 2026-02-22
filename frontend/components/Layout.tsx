@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { User, UserRole } from '../types';
 import { Bell, Home, Briefcase, Settings, LogOut, Menu, X, Users, Shield, DollarSign, MessageSquare, CreditCard, Search, User as UserIcon } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -54,6 +54,96 @@ export const SidebarItem: React.FC<SidebarItemProps> = ({
 
 export const Layout: React.FC<LayoutProps> = ({ user, onLogout, currentView, onChangeView, children }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
+  const [providerPendingRequestsCount, setProviderPendingRequestsCount] = useState(0);
+
+  useEffect(() => {
+    if (user.role !== 'CONSUMER' && user.role !== 'PROVIDER') {
+      setUnreadMessagesCount(0);
+      return;
+    }
+
+    let isMounted = true;
+
+    const fetchUnreadMessagesCount = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          if (isMounted) setUnreadMessagesCount(0);
+          return;
+        }
+
+        const res = await fetch('/api/chat/contacts', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (!res.ok) return;
+
+        const contacts = await res.json();
+        const totalUnread = Array.isArray(contacts)
+          ? contacts.reduce((sum, contact) => sum + (Number(contact?.unread) || 0), 0)
+          : 0;
+
+        if (isMounted) {
+          setUnreadMessagesCount(totalUnread);
+        }
+      } catch (error) {
+        console.error('Error fetching unread messages count:', error);
+      }
+    };
+
+    fetchUnreadMessagesCount();
+    const interval = setInterval(fetchUnreadMessagesCount, 5000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [user.role]);
+
+  useEffect(() => {
+    if (user.role !== 'PROVIDER') {
+      setProviderPendingRequestsCount(0);
+      return;
+    }
+
+    let isMounted = true;
+
+    const fetchProviderPendingRequestsCount = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          if (isMounted) setProviderPendingRequestsCount(0);
+          return;
+        }
+
+        const res = await fetch('/api/bookings/my-jobs', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (!res.ok) return;
+
+        const jobs = await res.json();
+        const pendingCount = Array.isArray(jobs)
+          ? jobs.filter((job) => job?.status === 'PENDING').length
+          : 0;
+
+        if (isMounted) {
+          setProviderPendingRequestsCount(pendingCount);
+        }
+      } catch (error) {
+        console.error('Error fetching provider pending requests count:', error);
+      }
+    };
+
+    fetchProviderPendingRequestsCount();
+    const interval = setInterval(fetchProviderPendingRequestsCount, 5000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [user.role]);
 
   const getNavItems = (role: UserRole) => {
     switch (role) {
@@ -62,16 +152,16 @@ export const Layout: React.FC<LayoutProps> = ({ user, onLogout, currentView, onC
           { id: 'dashboard', label: 'Dashboard', icon: Home },
           { id: 'explore', label: 'Explore Services', icon: Search },
           { id: 'requests', label: 'Service Requests', icon: Briefcase },
-          { id: 'messages', label: 'Messages', icon: MessageSquare, count: 2 },
+          { id: 'messages', label: 'Messages', icon: MessageSquare, count: unreadMessagesCount },
           { id: 'payments', label: 'Payments', icon: CreditCard },
         ];
       case 'PROVIDER':
         return [
           { id: 'dashboard', label: 'Dashboard', icon: Home },
-          { id: 'requests', label: 'Service Requests', icon: Briefcase, count: 5 },
+          { id: 'requests', label: 'Service Requests', icon: Briefcase, count: providerPendingRequestsCount },
           { id: 'services', label: 'My Services', icon: Settings },
           { id: 'earnings', label: 'Earnings', icon: DollarSign },
-          { id: 'messages', label: 'Messages', icon: MessageSquare },
+          { id: 'messages', label: 'Messages', icon: MessageSquare, count: unreadMessagesCount },
           { id: 'profile', label: 'Profile Settings', icon: UserIcon },
         ];
       case 'ADMIN':
