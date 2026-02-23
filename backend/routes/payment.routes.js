@@ -4,6 +4,7 @@ import {
     handleMpesaCallback,
     processEscrowAutoRelease,
     processEscrowReleaseQueue,
+    processEscrowStaleReleasing,
     releaseEscrowToProvider,
     handleMpesaB2CResultCallback,
     handleMpesaB2CTimeoutCallback,
@@ -28,6 +29,7 @@ router.post("/mpesa/b2c/timeout", verifyMpesaWebhook("B2C"), handleMpesaB2CTimeo
 router.get("/escrow/ops-summary", protect, adminOnly, getEscrowOpsSummary);
 router.post("/escrow/process-auto-release", protect, adminOnly, processEscrowAutoRelease);
 router.post("/escrow/process-release-queue", protect, adminOnly, processEscrowReleaseQueue);
+router.post("/escrow/process-stale-releasing", protect, adminOnly, processEscrowStaleReleasing);
 router.post("/escrow/:escrowId/release", protect, adminOnly, releaseEscrowToProvider);
 router.get("/escrow/:escrowId/reconciliation", protect, adminOnly, getEscrowReconciliation);
 router.post("/escrow/:escrowId/disputes", protect, raiseEscrowDispute);

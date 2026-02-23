@@ -151,6 +151,13 @@ const getPayoutRetryConfig = () => {
     };
 };
 
+const getStaleReleasingConfig = () => {
+    const timeoutMinutes = Number(process.env.ESCROW_RELEASING_TIMEOUT_MINUTES ?? 20);
+    return {
+        timeoutMinutes: Number.isFinite(timeoutMinutes) && timeoutMinutes > 0 ? timeoutMinutes : 20,
+    };
+};
+
 const extractB2CResult = (payload) => payload?.Result || payload?.result || payload || {};
 
 const extractResultParameters = (result) => {
@@ -193,7 +200,7 @@ const createLedgerEntryOnce = async ({ idempotencyKey, ...entry }) => {
 const setEscrowReleasedState = async ({ escrow, payout, callbackPayload }) => {
     const now = new Date();
 
-    await Escrow.updateOne(
+    const transitionResult = await Escrow.updateOne(
         { _id: escrow._id, state: { $in: ["RELEASING", "RELEASE_APPROVED"] } },
         {
             $set: {
@@ -207,6 +214,14 @@ const setEscrowReleasedState = async ({ escrow, payout, callbackPayload }) => {
             },
         }
     );
+
+    if (!transitionResult?.modifiedCount) {
+        const latestEscrow = await Escrow.findById(escrow._id).select("state");
+        return {
+            transitioned: false,
+            escrowState: latestEscrow?.state || null,
+        };
+    }
 
     if (escrow.providerEscrowTransaction) {
         await Transaction.updateOne(
@@ -253,10 +268,15 @@ const setEscrowReleasedState = async ({ escrow, payout, callbackPayload }) => {
         description: `Provider payout completed for booking ${escrow.booking}`,
         metadata: callbackPayload || null,
     });
+
+    return {
+        transitioned: true,
+        escrowState: "RELEASED",
+    };
 };
 
 const setEscrowPayoutFailedState = async ({ escrow, payout, callbackPayload, reason }) => {
-    await Escrow.updateOne(
+    const transitionResult = await Escrow.updateOne(
         { _id: escrow._id, state: { $in: ["RELEASING", "RELEASE_APPROVED"] } },
         {
             $set: {
@@ -271,6 +291,14 @@ const setEscrowPayoutFailedState = async ({ escrow, payout, callbackPayload, rea
         }
     );
 
+    if (!transitionResult?.modifiedCount) {
+        const latestEscrow = await Escrow.findById(escrow._id).select("state");
+        return {
+            transitioned: false,
+            escrowState: latestEscrow?.state || null,
+        };
+    }
+
     await createLedgerEntryOnce({
         idempotencyKey: `payout-failed:${payout?._id || "unknown"}`,
         escrow: escrow._id,
@@ -282,6 +310,11 @@ const setEscrowPayoutFailedState = async ({ escrow, payout, callbackPayload, rea
         description: `Provider payout failed for booking ${escrow.booking}`,
         metadata: callbackPayload || null,
     });
+
+    return {
+        transitioned: true,
+        escrowState: "PAYOUT_FAILED",
+    };
 };
 
 const initiateB2CPayoutForEscrow = async (escrow) => {
@@ -334,15 +367,7 @@ const initiateB2CPayoutForEscrow = async (escrow) => {
         throw new Error("Escrow net amount is invalid for payout");
     }
 
-    const payout = await Payout.create({
-        escrow: escrow._id,
-        provider: escrow.provider,
-        amount,
-        status: "PROCESSING",
-        paymentProvider: "MPESA_B2C",
-    });
-
-    await Escrow.updateOne(
+    const claimedEscrow = await Escrow.findOneAndUpdate(
         { _id: escrow._id, state: { $in: allowedStates } },
         {
             $set: {
@@ -350,6 +375,49 @@ const initiateB2CPayoutForEscrow = async (escrow) => {
                 metadata: {
                     ...(escrow.metadata || {}),
                     payoutInitiatedAt: new Date(),
+                },
+            },
+        },
+        { new: true }
+    );
+
+    if (!claimedEscrow) {
+        const latestEscrow = await Escrow.findById(escrow._id).select("state");
+        if (latestEscrow?.state === "RELEASING") {
+            const inFlight = await Payout.findOne({
+                escrow: escrow._id,
+                status: { $in: ["PENDING", "PROCESSING"] },
+            });
+            if (inFlight) {
+                return { payout: inFlight, alreadyInFlight: true };
+            }
+            throw new Error("Escrow is already in RELEASING state without an active payout");
+        }
+        throw new Error(`Escrow is not releasable from state ${latestEscrow?.state || "UNKNOWN"}`);
+    }
+
+    const inFlightAfterClaim = await Payout.findOne({
+        escrow: claimedEscrow._id,
+        status: { $in: ["PENDING", "PROCESSING"] },
+    });
+    if (inFlightAfterClaim) {
+        return { payout: inFlightAfterClaim, alreadyInFlight: true };
+    }
+
+    const payout = await Payout.create({
+        escrow: claimedEscrow._id,
+        provider: claimedEscrow.provider,
+        amount,
+        status: "PROCESSING",
+        paymentProvider: "MPESA_B2C",
+    });
+
+    await Escrow.updateOne(
+        { _id: claimedEscrow._id, state: "RELEASING" },
+        {
+            $set: {
+                metadata: {
+                    ...(claimedEscrow.metadata || {}),
                     activePayoutId: payout._id,
                 },
             },
@@ -358,13 +426,13 @@ const initiateB2CPayoutForEscrow = async (escrow) => {
 
     await createLedgerEntryOnce({
         idempotencyKey: `payout-initiated:${payout._id}`,
-        escrow: escrow._id,
-        booking: escrow.booking,
-        transaction: escrow.providerEscrowTransaction || null,
+        escrow: claimedEscrow._id,
+        booking: claimedEscrow.booking,
+        transaction: claimedEscrow.providerEscrowTransaction || null,
         entryType: "PROVIDER_PAYOUT_INITIATED",
         direction: "DEBIT",
         amount,
-        description: `Provider payout initiated for booking ${escrow.booking}`,
+        description: `Provider payout initiated for booking ${claimedEscrow.booking}`,
         metadata: { payoutId: payout._id },
     });
 
@@ -382,7 +450,7 @@ const initiateB2CPayoutForEscrow = async (escrow) => {
                 }
             );
             await setEscrowReleasedState({
-                escrow,
+                escrow: claimedEscrow,
                 payout,
                 callbackPayload: { devFallback: true },
             });
@@ -399,7 +467,7 @@ const initiateB2CPayoutForEscrow = async (escrow) => {
         }
 
         const token = await getAccessToken();
-        const originatorConversationId = `LL-B2C-${escrow._id.toString().slice(-6)}-${Date.now().toString().slice(-6)}`;
+        const originatorConversationId = `LL-B2C-${claimedEscrow._id.toString().slice(-6)}-${Date.now().toString().slice(-6)}`;
 
         const payload = {
             OriginatorConversationID: originatorConversationId,
@@ -409,7 +477,7 @@ const initiateB2CPayoutForEscrow = async (escrow) => {
             Amount: amount,
             PartyA: shortcode,
             PartyB: normalizedPhone,
-            Remarks: process.env.MPESA_B2C_REMARKS || `Payout for booking ${escrow.booking}`,
+            Remarks: process.env.MPESA_B2C_REMARKS || `Payout for booking ${claimedEscrow.booking}`,
             QueueTimeOutURL: timeoutUrl,
             ResultURL: resultUrl,
             Occasion: process.env.MPESA_B2C_OCCASION || "Service completion payout",
@@ -442,7 +510,7 @@ const initiateB2CPayoutForEscrow = async (escrow) => {
             );
 
             await setEscrowPayoutFailedState({
-                escrow,
+                escrow: claimedEscrow,
                 payout,
                 callbackPayload: data,
                 reason: "B2C_INITIATION_FAILED",
@@ -487,7 +555,7 @@ const initiateB2CPayoutForEscrow = async (escrow) => {
         );
 
         await setEscrowPayoutFailedState({
-            escrow,
+            escrow: claimedEscrow,
             payout,
             callbackPayload: null,
             reason: "B2C_EXCEPTION",
@@ -981,6 +1049,81 @@ export const processEscrowReleaseQueueBatch = async ({ limit = 20 } = {}) => {
     };
 };
 
+export const processEscrowStaleReleasingBatch = async ({ limit = 20 } = {}) => {
+    const safeLimit = Math.min(Number(limit) || 20, 100);
+    const { timeoutMinutes } = getStaleReleasingConfig();
+    const cutoff = new Date(Date.now() - timeoutMinutes * 60 * 1000);
+
+    const escrows = await Escrow.find({
+        state: "RELEASING",
+        updatedAt: { $lte: cutoff },
+    })
+        .sort({ updatedAt: 1 })
+        .limit(safeLimit);
+
+    let recovered = 0;
+    let skipped = 0;
+    const failed = [];
+
+    for (const escrow of escrows) {
+        try {
+            const latestPayout = await Payout.findOne({ escrow: escrow._id }).sort({ createdAt: -1 });
+
+            if (!latestPayout) {
+                const result = await setEscrowPayoutFailedState({
+                    escrow,
+                    payout: null,
+                    callbackPayload: null,
+                    reason: "STALE_RELEASING_NO_PAYOUT",
+                });
+                if (result.transitioned) recovered += 1;
+                else skipped += 1;
+                continue;
+            }
+
+            const isInFlight = ["PENDING", "PROCESSING"].includes(latestPayout.status);
+            const payoutStale = new Date(latestPayout.updatedAt) <= cutoff;
+            if (!isInFlight || !payoutStale) {
+                skipped += 1;
+                continue;
+            }
+
+            await Payout.updateOne(
+                { _id: latestPayout._id, status: { $in: ["PENDING", "PROCESSING"] } },
+                {
+                    $set: {
+                        status: "FAILED",
+                        resultCode: -1,
+                        resultDesc: `Payout marked failed after ${timeoutMinutes} minute stale RELEASING timeout`,
+                    },
+                }
+            );
+
+            const result = await setEscrowPayoutFailedState({
+                escrow,
+                payout: latestPayout,
+                callbackPayload: { staleRecovery: true, timeoutMinutes },
+                reason: "STALE_RELEASING_TIMEOUT",
+            });
+
+            if (result.transitioned) recovered += 1;
+            else skipped += 1;
+        } catch (error) {
+            failed.push({
+                escrowId: escrow._id,
+                message: error?.message || "Failed to recover stale RELEASING escrow",
+            });
+        }
+    }
+
+    return {
+        scanned: escrows.length,
+        recovered,
+        skipped,
+        failed,
+    };
+};
+
 // @desc    Process B2C payout queue for approved escrows
 // @route   POST /api/payments/escrow/process-release-queue
 // @access  Private/Admin
@@ -988,6 +1131,17 @@ export const processEscrowReleaseQueue = async (req, res) => {
     const outcome = await processEscrowReleaseQueueBatch({ limit: req.body?.limit });
     return res.status(200).json({
         message: "Escrow release queue processed",
+        ...outcome,
+    });
+};
+
+// @desc    Recover stale escrows stuck in RELEASING
+// @route   POST /api/payments/escrow/process-stale-releasing
+// @access  Private/Admin
+export const processEscrowStaleReleasing = async (req, res) => {
+    const outcome = await processEscrowStaleReleasingBatch({ limit: req.body?.limit });
+    return res.status(200).json({
+        message: "Escrow stale releasing recovery processed",
         ...outcome,
     });
 };
