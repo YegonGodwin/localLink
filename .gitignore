@@ -11,3 +11,5 @@ rebuild-frontend.ps1
 
 rebuild-backend.sh
 rebuild-frontend.sh
+/_proposal_unzip
+_proposal.zip

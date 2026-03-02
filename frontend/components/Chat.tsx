@@ -3,6 +3,7 @@ import { Card } from './Layout';
 import { Send, Image, MoreVertical, Phone, Video, CheckCheck, Smile, Paperclip, Loader2, MessageSquare } from 'lucide-react';
 import { cn, Button } from './Layout';
 import { User, ChatContact, ChatMessage } from '../types';
+import { getSocket, joinUserRoom } from '../services/socketService';
 
 interface ChatInterfaceProps {
   user: User;
@@ -17,6 +18,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, initialTarge
   const [loading, setLoading] = useState({ contacts: true, messages: false });
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const activeChatRef = useRef<string | null>(initialTargetId || null);
 
   const currentChat = contacts.find(c => c.id === activeChat);
 
@@ -132,6 +134,76 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, initialTarge
   };
 
   useEffect(() => {
+    activeChatRef.current = activeChat;
+  }, [activeChat]);
+
+  useEffect(() => {
+    joinUserRoom(user.id);
+    const socket = getSocket();
+
+    const handleLiveMessage = (message: any) => {
+      if (!message) return;
+
+      const senderId = String(message.sender || '');
+      const receiverId = String(message.receiver || '');
+      const myId = user.id;
+      const otherId = senderId === myId ? receiverId : senderId;
+      const isForMe = senderId === myId || receiverId === myId;
+      if (!isForMe) return;
+
+      setContacts((prev) => {
+        const exists = prev.some((contact) => contact.id === otherId);
+        if (exists) return prev;
+        return [
+          {
+            id: otherId,
+            name: 'New Contact',
+            avatar: 'https://randomuser.me/api/portraits/lego/1.jpg',
+            lastMessage: '',
+            lastMessageTime: '',
+            unread: 0,
+            online: false,
+          },
+          ...prev,
+        ];
+      });
+
+      const isActiveThread = activeChatRef.current === otherId;
+      if (isActiveThread) {
+        setMessages((prev) => {
+          if (prev.some((msg) => msg.id === message._id)) {
+            return prev;
+          }
+          return [
+            ...prev,
+            {
+              id: message._id,
+              senderId,
+              text: message.text,
+              timestamp: new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              isImage: message.isImage,
+            },
+          ];
+        });
+      }
+
+      fetchContacts();
+      if (isActiveThread && senderId !== myId) {
+        const token = localStorage.getItem('token');
+        fetch(`/api/chat/read/${otherId}`, {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${token}` }
+        }).catch(() => {});
+      }
+    };
+
+    socket.on('chat:message', handleLiveMessage);
+    return () => {
+      socket.off('chat:message', handleLiveMessage);
+    };
+  }, [user.id]);
+
+  useEffect(() => {
     fetchContacts();
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current);
@@ -142,10 +214,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, initialTarge
     if (activeChat) {
       fetchMessages(activeChat);
 
-      // Setup polling for new messages every 3 seconds
+      // Fallback polling in case realtime transport is unavailable
       if (pollingRef.current) clearInterval(pollingRef.current);
       pollingRef.current = setInterval(() => {
-        // Simplified polling - in a real app use WebSockets
         fetchMessages(activeChat);
         fetchContacts();
       }, 5000);

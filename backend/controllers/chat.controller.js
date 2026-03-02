@@ -1,5 +1,6 @@
 import Message from "../models/Chat.model.js";
 import User from "../models/User.model.js";
+import { getIO } from "../sockets/io.instance.js";
 
 // @desc    Get message history with a specific user
 // @route   GET /api/chat/messages/:userId
@@ -34,7 +35,34 @@ export const sendMessage = async (req, res) => {
 
     const savedMessage = await message.save();
 
-    // Logic to update unread count or last message can be added here or handled by sockets
+    const io = getIO();
+    if (io) {
+        const receiverRoom = receiverId?.toString?.() || String(receiverId);
+        const senderRoom = senderId?.toString?.() || String(senderId);
+        const createdAt = savedMessage.createdAt?.toISOString?.() || new Date().toISOString();
+
+        const livePayload = {
+            _id: savedMessage._id,
+            sender: senderRoom,
+            receiver: receiverRoom,
+            text: savedMessage.text,
+            isImage: savedMessage.isImage,
+            createdAt,
+        };
+
+        io.to(receiverRoom).emit("chat:message", livePayload);
+        io.to(senderRoom).emit("chat:message", livePayload);
+
+        const senderUser = await User.findById(senderId).select("name");
+        io.to(receiverRoom).emit("notification:new", {
+            id: `msg-${senderRoom}-${createdAt}`,
+            type: "message",
+            title: `New message from ${senderUser?.name || "User"}`,
+            description: savedMessage.text,
+            timestamp: createdAt,
+            targetView: "messages",
+        });
+    }
 
     res.status(201).json(savedMessage);
 };

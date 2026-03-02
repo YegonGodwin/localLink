@@ -21,6 +21,7 @@ import { startEscrowJobs } from "./jobs/escrow.jobs.js";
 
 // Sockets
 import chatSocket from "./sockets/chat.socket.js";
+import { setIO } from "./sockets/io.instance.js";
 
 dotenv.config();
 connectDB();
@@ -57,6 +58,7 @@ app.get("/", (req, res) => {
 
 // Initialize Socket.io logic
 chatSocket(io);
+setIO(io);
 
 // Error handling middleware
 app.use(notFound);

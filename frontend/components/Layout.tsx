@@ -1,9 +1,10 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { User, UserRole } from '../types';
 import { Bell, Home, Briefcase, Settings, LogOut, Menu, X, Users, Shield, DollarSign, MessageSquare, CreditCard, Search, User as UserIcon } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { getSocket, joinUserRoom } from '../services/socketService';
 
 // Helper for tailwind class merging
 export function cn(...inputs: (string | undefined | null | false)[]) {
@@ -16,6 +17,16 @@ interface LayoutProps {
   currentView: string;
   onChangeView: (view: string) => void;
   children: React.ReactNode;
+}
+
+interface HeaderNotification {
+  id: string;
+  type?: 'message' | 'booking';
+  title: string;
+  description: string;
+  timestamp: string;
+  targetView: string;
+  unread: boolean;
 }
 
 interface SidebarItemProps {
@@ -56,6 +67,13 @@ export const Layout: React.FC<LayoutProps> = ({ user, onLogout, currentView, onC
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   const [providerPendingRequestsCount, setProviderPendingRequestsCount] = useState(0);
+  const [headerNotifications, setHeaderNotifications] = useState<HeaderNotification[]>([]);
+  const [readNotificationIds, setReadNotificationIds] = useState<string[]>([]);
+  const [notificationOpen, setNotificationOpen] = useState(false);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const notificationPanelRef = useRef<HTMLDivElement | null>(null);
+  const readNotificationIdsRef = useRef<string[]>([]);
+  const notificationStorageKey = `header_notification_read_ids_${user.role}_${user.id}`;
 
   useEffect(() => {
     if (user.role !== 'CONSUMER' && user.role !== 'PROVIDER') {
@@ -100,6 +118,230 @@ export const Layout: React.FC<LayoutProps> = ({ user, onLogout, currentView, onC
       clearInterval(interval);
     };
   }, [user.role]);
+
+  useEffect(() => {
+    readNotificationIdsRef.current = readNotificationIds;
+  }, [readNotificationIds]);
+
+  useEffect(() => {
+    if (user.role === 'ADMIN') {
+      setReadNotificationIds([]);
+      return;
+    }
+
+    try {
+      const raw = localStorage.getItem(notificationStorageKey);
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed)) {
+        setReadNotificationIds(parsed.filter((id): id is string => typeof id === 'string'));
+      } else {
+        setReadNotificationIds([]);
+      }
+    } catch {
+      setReadNotificationIds([]);
+    }
+  }, [notificationStorageKey, user.role]);
+
+  useEffect(() => {
+    joinUserRoom(user.id);
+    const socket = getSocket();
+
+    const handleRealtimeNotification = (event: HeaderNotification) => {
+      if (user.role === 'ADMIN' || !event?.id) {
+        return;
+      }
+
+      const isRead = readNotificationIdsRef.current.includes(event.id);
+      setHeaderNotifications((prev) => {
+        const nextEvent: HeaderNotification = {
+          id: event.id,
+          type: event.type,
+          title: event.title || 'New notification',
+          description: event.description || '',
+          timestamp: event.timestamp || new Date().toISOString(),
+          targetView: event.targetView || 'dashboard',
+          unread: !isRead,
+        };
+
+        const deduped = [nextEvent, ...prev.filter((item) => item.id !== event.id)];
+        deduped.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        return deduped.slice(0, 20);
+      });
+    };
+
+    const handleRealtimeMessage = (event: { sender?: string; receiver?: string }) => {
+      if (!event) return;
+      const isIncoming = event.receiver === user.id && event.sender !== user.id;
+      if (user.role !== 'ADMIN' && isIncoming && currentView !== 'messages') {
+        setUnreadMessagesCount((prev) => prev + 1);
+      }
+    };
+
+    socket.on('notification:new', handleRealtimeNotification);
+    socket.on('chat:message', handleRealtimeMessage);
+
+    return () => {
+      socket.off('notification:new', handleRealtimeNotification);
+      socket.off('chat:message', handleRealtimeMessage);
+    };
+  }, [currentView, user.id, user.role]);
+
+  useEffect(() => {
+    if (user.role === 'ADMIN') {
+      setHeaderNotifications([]);
+      return;
+    }
+
+    let isMounted = true;
+
+    const fetchHeaderNotifications = async () => {
+      try {
+        if (isMounted) setLoadingNotifications(true);
+        const token = localStorage.getItem('token');
+        if (!token) {
+          if (isMounted) setHeaderNotifications([]);
+          return;
+        }
+
+        const bookingEndpoint = user.role === 'PROVIDER' ? '/api/bookings/my-jobs' : '/api/bookings/my-bookings';
+        const [contactsRes, bookingsRes] = await Promise.all([
+          fetch('/api/chat/contacts', {
+            headers: { Authorization: `Bearer ${token}` }
+          }),
+          fetch(bookingEndpoint, {
+            headers: { Authorization: `Bearer ${token}` }
+          }),
+        ]);
+
+        const notifications: HeaderNotification[] = [];
+
+        if (contactsRes.ok) {
+          const contacts = await contactsRes.json();
+          if (Array.isArray(contacts)) {
+            contacts
+              .filter((contact: any) => Number(contact?.unread) > 0)
+              .forEach((contact: any) => {
+                const ts = contact?.lastMessageTime || new Date().toISOString();
+                const id = `msg-${String(contact?.id || '')}-${String(ts)}`;
+                notifications.push({
+                  id,
+                  title: `New message from ${contact?.name || 'Provider'}`,
+                  description: `${Number(contact?.unread)} unread message${Number(contact?.unread) === 1 ? '' : 's'}`,
+                  timestamp: ts,
+                  targetView: 'messages',
+                  unread: !readNotificationIds.includes(id),
+                });
+              });
+          }
+        }
+
+        if (bookingsRes.ok) {
+          const bookings = await bookingsRes.json();
+          if (Array.isArray(bookings)) {
+            const bookingStatusLabels =
+              user.role === 'PROVIDER'
+                ? ({
+                    PENDING: 'New service request',
+                    COMPLETED: 'Job marked as completed',
+                    CANCELLED: 'Job was cancelled',
+                    IN_PROGRESS: 'Job moved to in progress',
+                  } as Record<string, string>)
+                : ({
+                    IN_PROGRESS: 'Service request accepted',
+                    COMPLETED: 'Service marked as completed',
+                    CANCELLED: 'Service request cancelled',
+                  } as Record<string, string>);
+
+            bookings.forEach((booking: any) => {
+              const status = String(booking?.status || '');
+              if (!bookingStatusLabels[status]) {
+                return;
+              }
+              const ts = booking?.updatedAt || booking?.date || new Date().toISOString();
+              const id = `booking-${String(booking?._id || '')}-${status}-${String(ts)}`;
+              notifications.push({
+                id,
+                title: bookingStatusLabels[status],
+                description:
+                  user.role === 'PROVIDER'
+                    ? `${booking?.service?.title || 'Service'} requested by ${booking?.consumer?.name || 'consumer'}`
+                    : `${booking?.service?.title || 'Service'} with ${booking?.provider?.name || 'provider'}`,
+                timestamp: ts,
+                targetView: 'requests',
+                unread: !readNotificationIds.includes(id),
+              });
+            });
+          }
+        }
+
+        notifications.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+        if (isMounted) {
+          setHeaderNotifications(notifications.slice(0, 20));
+        }
+      } catch (error) {
+        console.error('Error fetching notifications:', error);
+      } finally {
+        if (isMounted) setLoadingNotifications(false);
+      }
+    };
+
+    fetchHeaderNotifications();
+    const interval = setInterval(fetchHeaderNotifications, 10000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [readNotificationIds, user.role]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!notificationPanelRef.current) {
+        return;
+      }
+      if (!notificationPanelRef.current.contains(event.target as Node)) {
+        setNotificationOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const unreadHeaderNotificationsCount = useMemo(
+    () => headerNotifications.filter((notification) => notification.unread).length,
+    [headerNotifications]
+  );
+
+  const markNotificationsRead = (ids: string[]) => {
+    if (ids.length === 0 || user.role === 'ADMIN') {
+      return;
+    }
+    setReadNotificationIds((prev) => {
+      const merged = Array.from(new Set([...prev, ...ids]));
+      localStorage.setItem(notificationStorageKey, JSON.stringify(merged));
+      return merged;
+    });
+  };
+
+  const formatNotificationTime = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = Date.now();
+    const diffMs = now - date.getTime();
+    if (Number.isNaN(diffMs)) {
+      return 'Just now';
+    }
+    const minute = 60 * 1000;
+    const hour = 60 * minute;
+    const day = 24 * hour;
+    if (diffMs < minute) return 'Just now';
+    if (diffMs < hour) return `${Math.floor(diffMs / minute)}m ago`;
+    if (diffMs < day) return `${Math.floor(diffMs / hour)}h ago`;
+    return date.toLocaleDateString();
+  };
 
   useEffect(() => {
     if (user.role !== 'PROVIDER') {
@@ -269,11 +511,72 @@ export const Layout: React.FC<LayoutProps> = ({ user, onLogout, currentView, onC
            <h2 className="text-xl font-semibold text-white capitalize">
              {navItems.find(i => i.id === currentView)?.label || 'Dashboard'}
            </h2>
-           <div className="flex items-center space-x-4">
-             <button className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition-all relative">
+           <div className="flex items-center space-x-4 relative" ref={notificationPanelRef}>
+             <button
+               className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-full transition-all relative"
+               onClick={() => setNotificationOpen((prev) => !prev)}
+               aria-label="Notifications"
+             >
                <Bell size={20} />
-               <span className="absolute top-1.5 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-slate-950"></span>
+               {user.role !== 'ADMIN' && unreadHeaderNotificationsCount > 0 && (
+                 <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] rounded-full border-2 border-slate-950 flex items-center justify-center">
+                   {unreadHeaderNotificationsCount > 99 ? '99+' : unreadHeaderNotificationsCount}
+                 </span>
+               )}
              </button>
+
+             {notificationOpen && user.role !== 'ADMIN' && (
+               <div className="absolute right-0 top-12 w-96 max-w-[calc(100vw-2rem)] rounded-xl border border-slate-800 bg-slate-900 shadow-2xl z-50">
+                 <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+                   <h3 className="text-sm font-semibold text-white">Notifications</h3>
+                   <button
+                     className="text-xs text-blue-400 hover:text-blue-300 disabled:text-slate-500"
+                     disabled={unreadHeaderNotificationsCount === 0}
+                     onClick={() =>
+                       markNotificationsRead(
+                         headerNotifications
+                           .filter((notification) => notification.unread)
+                           .map((notification) => notification.id)
+                       )
+                     }
+                   >
+                     Mark all as read
+                   </button>
+                 </div>
+                 <div className="max-h-96 overflow-y-auto">
+                   {loadingNotifications ? (
+                     <div className="px-4 py-6 text-sm text-slate-400">Loading notifications...</div>
+                   ) : headerNotifications.length === 0 ? (
+                     <div className="px-4 py-6 text-sm text-slate-500">No notifications yet.</div>
+                   ) : (
+                     headerNotifications.map((notification) => (
+                       <button
+                         key={notification.id}
+                         className={cn(
+                           "w-full text-left px-4 py-3 border-b border-slate-800/70 hover:bg-slate-800/60 transition-colors",
+                           notification.unread ? "bg-blue-600/5" : "bg-transparent"
+                         )}
+                         onClick={() => {
+                           markNotificationsRead([notification.id]);
+                           setNotificationOpen(false);
+                           onChangeView(notification.targetView);
+                         }}
+                       >
+                         <div className="flex items-start justify-between gap-2">
+                           <p className={cn("text-sm", notification.unread ? "text-white font-medium" : "text-slate-300")}>
+                             {notification.title}
+                           </p>
+                           <span className="text-[11px] text-slate-500 whitespace-nowrap">
+                             {formatNotificationTime(notification.timestamp)}
+                           </span>
+                         </div>
+                         <p className="text-xs text-slate-400 mt-1">{notification.description}</p>
+                       </button>
+                     ))
+                   )}
+                 </div>
+               </div>
+             )}
            </div>
         </header>
 
