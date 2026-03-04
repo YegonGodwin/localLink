@@ -7,6 +7,12 @@ const bookingSchema = new mongoose.Schema(
             required: true,
             ref: "Service",
         },
+        order: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Order",
+            default: null,
+            index: true,
+        },
         consumer: {
             type: mongoose.Schema.Types.ObjectId,
             required: true,
@@ -31,6 +37,49 @@ const bookingSchema = new mongoose.Schema(
             type: Number,
             required: true,
         },
+        currency: {
+            type: String,
+            default: "KES",
+        },
+        serviceTitleSnapshot: {
+            type: String,
+            default: null,
+        },
+        unitPriceSnapshot: {
+            type: Number,
+            default: null,
+        },
+        requestedAt: {
+            type: Date,
+            default: Date.now,
+        },
+        completedAt: {
+            type: Date,
+            default: null,
+        },
+        cancelledAt: {
+            type: Date,
+            default: null,
+        },
+        cancelledBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+            default: null,
+        },
+        cancellationReason: {
+            type: String,
+            default: null,
+        },
+        statusHistory: [
+            {
+                from: { type: String, default: null },
+                to: { type: String, required: true },
+                actor: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+                actorRole: { type: String, default: null },
+                reason: { type: String, default: null },
+                at: { type: Date, default: Date.now },
+            },
+        ],
     },
     {
         timestamps: true,

@@ -8,6 +8,7 @@ import { ExploreServices } from './ExploreServices';
 import { ServiceRequests } from './ServiceRequests';
 import { ProviderProfile } from './ProviderProfile';
 import { Payments } from './Payments';
+import { OrdersPage } from '../orders/OrdersPage';
 
 interface ConsumerProps {
   user: User;
@@ -54,6 +55,10 @@ export const ConsumerDashboard: React.FC<ConsumerProps> = ({ user, currentView, 
 
   if (currentView === 'payments') {
     return <Payments />;
+  }
+
+  if (currentView === 'orders') {
+    return <OrdersPage role="CONSUMER" />;
   }
 
   if (currentView === 'explore') {

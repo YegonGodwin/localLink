@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Card, Button, cn } from '../Layout';
 import { Plus, Loader2 } from 'lucide-react';
 import { User, Booking, Transaction } from '../../types';
+import orderService from '../../services/orderService';
 
 interface DashboardHomeProps {
   user: User;
@@ -15,28 +16,12 @@ export const DashboardHome: React.FC<DashboardHomeProps> = ({ user }) => {
   const [paymentsError, setPaymentsError] = useState<string | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-
     const loadBookings = async () => {
       try {
         setLoadingBookings(true);
-        const res = await fetch('/api/bookings/my-bookings', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const data = await res.json();
-        if (res.ok && Array.isArray(data)) {
-          const mapped: Booking[] = data.map((b: any) => ({
-            id: b._id,
-            serviceId: b.service?._id || '',
-            consumerId: b.consumer?._id || '',
-            providerId: b.provider?._id || '',
-            serviceTitle: b.service?.title || 'Service',
-            providerName: b.provider?.name || 'Provider',
-            consumerName: b.consumer?.name || 'You',
-            date: b.date,
-            status: b.status,
-            price: b.price
-          }));
+        const orders = await orderService.getMyOrders();
+        const mapped: Booking[] = orderService.mapOrdersToBookings(orders);
+        if (Array.isArray(mapped)) {
           setBookings(mapped);
         } else {
           setBookings([]);
@@ -52,21 +37,10 @@ export const DashboardHome: React.FC<DashboardHomeProps> = ({ user }) => {
       try {
         setLoadingPayments(true);
         setPaymentsError(null);
-        const res = await fetch('/api/transactions', {
-          headers: { Authorization: `Bearer ${token}` },
-          signal,
-        });
-        const data = await res.json();
+        const orders = await orderService.getMyOrders();
         if (signal && signal.aborted) return;
-        if (res.ok && Array.isArray(data)) {
-          const mapped: Transaction[] = data.map((t: any) => ({
-            id: t._id,
-            date: t.date || t.createdAt || new Date().toISOString(),
-            amount: t.amount,
-            status: t.status,
-            description: t.booking?.service?.title || t.description || 'No description',
-            user: t.user?.name || user.name
-          }));
+        const mapped: Transaction[] = orderService.mapOrdersToPayments(orders, 'CONSUMER');
+        if (Array.isArray(mapped)) {
           const successful = mapped.filter((t) => t.status === 'COMPLETED');
           if (!signal || !signal.aborted) setPayments(successful);
         } else {

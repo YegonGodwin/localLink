@@ -5,6 +5,35 @@ import mongoose from 'mongoose';
 import { syncEscrowStateForBookingStatus } from "../services/escrow.service.js";
 import { getIO } from "../sockets/io.instance.js";
 
+const BOOKING_STATUSES = ["PENDING", "IN_PROGRESS", "COMPLETED", "CANCELLED"];
+
+const BOOKING_TRANSITIONS = {
+    CONSUMER: {
+        PENDING: ["CANCELLED"],
+        IN_PROGRESS: ["CANCELLED"],
+        COMPLETED: [],
+        CANCELLED: [],
+    },
+    PROVIDER: {
+        PENDING: ["IN_PROGRESS", "CANCELLED"],
+        IN_PROGRESS: ["COMPLETED", "CANCELLED"],
+        COMPLETED: [],
+        CANCELLED: [],
+    },
+    ADMIN: {
+        PENDING: ["IN_PROGRESS", "COMPLETED", "CANCELLED"],
+        IN_PROGRESS: ["COMPLETED", "CANCELLED"],
+        COMPLETED: [],
+        CANCELLED: [],
+    },
+};
+
+const canTransitionBookingStatus = ({ role, fromStatus, toStatus }) => {
+    const allowedByRole = BOOKING_TRANSITIONS[role] || {};
+    const allowedTargets = allowedByRole[fromStatus] || [];
+    return allowedTargets.includes(toStatus);
+};
+
 // @desc    Create new booking
 // @route   POST /api/bookings
 // @access  Private
@@ -18,12 +47,28 @@ export const createBooking = async (req, res) => {
         throw new Error("Service not found");
     }
 
+    const bookingPrice = Number(service.price) || Number(price) || 0;
+
     const booking = new Booking({
         service: serviceId,
         consumer: req.user._id,
         provider: service.provider,
-        date,
-        price,
+        date: date || new Date(),
+        price: bookingPrice,
+        currency: "KES",
+        serviceTitleSnapshot: service.title,
+        unitPriceSnapshot: bookingPrice,
+        requestedAt: new Date(),
+        statusHistory: [
+            {
+                from: null,
+                to: "PENDING",
+                actor: req.user._id,
+                actorRole: req.user.role,
+                reason: "Manual booking created",
+                at: new Date(),
+            },
+        ],
     });
 
     const createdBooking = await booking.save();
@@ -42,7 +87,7 @@ export const createBooking = async (req, res) => {
                     {
                         booking: createdBooking._id,
                         user: service.provider,
-                        amount: price,
+                        amount: bookingPrice,
                         status: "PENDING",
                         description: `Escrow for Booking #${createdBooking._id.toString().slice(-6).toUpperCase()}`,
                     }
@@ -51,7 +96,7 @@ export const createBooking = async (req, res) => {
                 await Transaction.create({
                     booking: createdBooking._id,
                     user: req.user._id,
-                    amount: price,
+                    amount: bookingPrice,
                     status: "COMPLETED",
                     description: `Payment for ${service.title}`,
                 }, { session });
@@ -66,7 +111,7 @@ export const createBooking = async (req, res) => {
             const t1 = await Transaction.create({
                 booking: createdBooking._id,
                 user: service.provider,
-                amount: price,
+                amount: bookingPrice,
                 status: "PENDING",
                 description: `Escrow for Booking #${createdBooking._id.toString().slice(-6).toUpperCase()}`,
             });
@@ -74,7 +119,7 @@ export const createBooking = async (req, res) => {
                 await Transaction.create({
                     booking: createdBooking._id,
                     user: req.user._id,
-                    amount: price,
+                    amount: bookingPrice,
                     status: "COMPLETED",
                     description: `Payment for ${service.title}`,
                 });
@@ -149,7 +194,7 @@ export const getBookingById = async (req, res) => {
 // @route   PUT /api/bookings/:id/status
 // @access  Private
 export const updateBookingStatus = async (req, res) => {
-    const { status } = req.body;
+    const { status, reason } = req.body;
     const booking = await Booking.findById(req.params.id);
 
     if (booking) {
@@ -162,8 +207,54 @@ export const updateBookingStatus = async (req, res) => {
             throw new Error("Not authorized to update booking status");
         }
 
-        const nextStatus = status || booking.status;
+        if (!status || !BOOKING_STATUSES.includes(status)) {
+            res.status(400);
+            throw new Error("Invalid booking status");
+        }
+
+        if (status === booking.status) {
+            return res.json(booking);
+        }
+
+        const actorRole = req.user.role;
+        if (!canTransitionBookingStatus({
+            role: actorRole,
+            fromStatus: booking.status,
+            toStatus: status,
+        })) {
+            res.status(400);
+            throw new Error(`Invalid status transition from ${booking.status} to ${status} for ${actorRole}`);
+        }
+
+        const previousStatus = booking.status;
+        const nextStatus = status;
+        const now = new Date();
         booking.status = nextStatus;
+        booking.statusHistory = [
+            ...(booking.statusHistory || []),
+            {
+                from: previousStatus,
+                to: nextStatus,
+                actor: req.user._id,
+                actorRole,
+                reason: reason || null,
+                at: now,
+            },
+        ];
+
+        if (nextStatus === "COMPLETED") {
+            booking.completedAt = now;
+            booking.cancelledAt = null;
+            booking.cancelledBy = null;
+            booking.cancellationReason = null;
+        }
+
+        if (nextStatus === "CANCELLED") {
+            booking.cancelledAt = now;
+            booking.cancelledBy = req.user._id;
+            booking.cancellationReason = reason || `${actorRole} cancelled booking`;
+        }
+
         const updatedBooking = await booking.save();
         const io = getIO();
         const escrow = await syncEscrowStateForBookingStatus({

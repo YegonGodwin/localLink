@@ -7,6 +7,7 @@ import LedgerEntry from "../models/LedgerEntry.model.js";
 import Payout from "../models/Payout.model.js";
 import Dispute from "../models/Dispute.model.js";
 import Settings from "../models/Settings.model.js";
+import Order from "../models/Order.model.js";
 import { processEscrowAutoReleaseApprovals } from "../services/escrow.service.js";
 import User from "../models/User.model.js";
 import {
@@ -570,13 +571,30 @@ const createBookingsForTransaction = async (transaction) => {
     const services = await Service.find({ _id: { $in: transaction.services } });
     if (!services.length) return;
     const { commissionType, commissionValue, holdHours } = await getEscrowConfig();
+    const orderId = transaction.order || null;
 
     const existingEscrow = await Escrow.findOne({ consumerPaymentTransaction: transaction._id }).select("_id");
     if (existingEscrow) {
-        await Transaction.updateOne(
-            { _id: transaction._id, bookingCreated: { $ne: true } },
-            { $set: { bookingCreated: true, bookingCreationInProgress: false } }
-        );
+        const writes = [
+            Transaction.updateOne(
+                { _id: transaction._id, bookingCreated: { $ne: true } },
+                { $set: { bookingCreated: true, bookingCreationInProgress: false } }
+            ),
+        ];
+        if (orderId) {
+            writes.push(
+                Order.updateOne(
+                    { _id: orderId },
+                    {
+                        $set: {
+                            status: "BOOKINGS_CREATED",
+                            paymentTransaction: transaction._id,
+                        },
+                    }
+                )
+            );
+        }
+        await Promise.all(writes);
         return;
     }
 
@@ -589,10 +607,25 @@ const createBookingsForTransaction = async (transaction) => {
 
             const bookingDocs = services.map((service) => ({
                 service: service._id,
+                order: orderId,
                 consumer: transaction.user,
                 provider: service.provider,
                 date: new Date(),
                 price: service.price,
+                currency: "KES",
+                serviceTitleSnapshot: service.title,
+                unitPriceSnapshot: service.price,
+                requestedAt: new Date(),
+                statusHistory: [
+                    {
+                        from: null,
+                        to: "PENDING",
+                        actor: transaction.user,
+                        actorRole: "CONSUMER",
+                        reason: "Payment confirmed and booking created",
+                        at: new Date(),
+                    },
+                ],
             }));
 
             const createdBookings = await Booking.insertMany(bookingDocs, insertOptions);
@@ -606,6 +639,7 @@ const createBookingsForTransaction = async (transaction) => {
 
                 return {
                     booking: booking._id,
+                    order: orderId,
                     consumer: booking.consumer,
                     provider: booking.provider,
                     consumerPaymentTransaction: transaction._id,
@@ -623,6 +657,7 @@ const createBookingsForTransaction = async (transaction) => {
 
             const providerEscrowTransactions = createdEscrows.map((escrow) => ({
                 booking: escrow.booking,
+                order: orderId,
                 escrow: escrow._id,
                 user: escrow.provider,
                 amount: escrow.netAmount,
@@ -675,11 +710,31 @@ const createBookingsForTransaction = async (transaction) => {
                 }
             }
 
-            await Transaction.updateOne(
-                { _id: transaction._id, bookingCreated: { $ne: true } },
-                { $set: { bookingCreated: true, bookingCreationInProgress: false } },
-                writeOptions
-            );
+            const writes = [
+                Transaction.updateOne(
+                    { _id: transaction._id, bookingCreated: { $ne: true } },
+                    { $set: { bookingCreated: true, bookingCreationInProgress: false } },
+                    writeOptions
+                ),
+            ];
+            if (orderId) {
+                writes.push(
+                    Order.updateOne(
+                        { _id: orderId },
+                        {
+                            $set: {
+                                status: "BOOKINGS_CREATED",
+                                paymentTransaction: transaction._id,
+                            },
+                            $addToSet: {
+                                bookingIds: { $each: createdBookings.map((booking) => booking._id) },
+                            },
+                        },
+                        writeOptions
+                    )
+                );
+            }
+            await Promise.all(writes);
     };
 
     const session = await mongoose.startSession();
@@ -743,6 +798,9 @@ export const initiateMpesaStkPush = async (req, res) => {
 
     const isDevFallback = process.env.MPESA_ENV !== "production" && 
                           (process.env.MPESA_DEV_FALLBACK === "true" || !shortcode || !passkey || !callbackUrl);
+    const allowRuntimeFallback =
+        process.env.MPESA_ENV !== "production" &&
+        process.env.MPESA_RUNTIME_FALLBACK === "true";
     
     console.log(`[payment] Mode: ${isDevFallback ? 'Dev Fallback' : 'Real M-Pesa'}`);
 
@@ -777,9 +835,74 @@ export const initiateMpesaStkPush = async (req, res) => {
         TransactionDesc: "LocalLink services payment",
     };
 
+    let order = null;
+    const createRuntimeFallbackPayment = async (reason, detail) => {
+        const transaction = await Transaction.create({
+            order: order?._id || null,
+            user: req.user._id,
+            amount,
+            status: "COMPLETED",
+            transactionType: "CUSTOMER_PAYMENT",
+            description: `M-Pesa payment (runtime fallback) for ${services.length} service${services.length === 1 ? "" : "s"}`,
+            paymentProvider: "MPESA",
+            phoneNumber: normalizedPhone,
+            checkoutRequestId: `DEV-${Date.now()}`,
+            merchantRequestId: `DEV-${Date.now()}`,
+            accountReference: reference,
+            services: services.map((s) => s._id),
+            provider: services[0].provider,
+            resultCode: 0,
+            resultDesc: `Runtime fallback: ${reason}`,
+            metadata: {
+                devFallbackReason: reason,
+                runtimeFallback: true,
+                runtimeFallbackDetail: detail || null,
+            },
+        });
+        if (order?._id) {
+            await Order.updateOne(
+                { _id: order._id },
+                { $set: { status: "PAYMENT_COMPLETED", paymentTransaction: transaction._id } }
+            );
+        }
+
+        try {
+            await createBookingsForTransaction(transaction);
+        } catch (error) {
+            console.error("Failed to create bookings for runtime fallback payment:", error);
+            if (order?._id) {
+                await Order.updateOne(
+                    { _id: order._id },
+                    { $set: { status: "FAILED" } }
+                );
+            }
+        }
+
+        return transaction;
+    };
+
     try {
+        order = await Order.create({
+            consumer: req.user._id,
+            provider: services[0].provider,
+            services: services.map((service) => ({
+                service: service._id,
+                title: service.title,
+                category: service.category || null,
+                unitPrice: Number(service.price) || 0,
+            })),
+            totalAmount: amount,
+            currency: "KES",
+            status: "PAYMENT_PENDING",
+            metadata: {
+                accountReference: reference,
+                phoneNumber: normalizedPhone,
+            },
+        });
+
         if (isDevFallback) {
             const transaction = await Transaction.create({
+                order: order._id,
                 user: req.user._id,
                 amount,
                 status: "COMPLETED",
@@ -795,11 +918,19 @@ export const initiateMpesaStkPush = async (req, res) => {
                 resultCode: 0,
                 resultDesc: "Dev fallback: no Daraja config",
             });
+            await Order.updateOne(
+                { _id: order._id },
+                { $set: { status: "PAYMENT_COMPLETED", paymentTransaction: transaction._id } }
+            );
 
             try {
                 await createBookingsForTransaction(transaction);
             } catch (error) {
                 console.error("Failed to create bookings for dev fallback payment:", error);
+                await Order.updateOne(
+                    { _id: order._id },
+                    { $set: { status: "FAILED" } }
+                );
             }
 
             return res.json({
@@ -832,6 +963,20 @@ export const initiateMpesaStkPush = async (req, res) => {
                 statusText: resMpesa.statusText,
                 body: text
             });
+            if (allowRuntimeFallback && Number(resMpesa.status) >= 500) {
+                const transaction = await createRuntimeFallbackPayment(
+                    "MPESA_UPSTREAM_5XX",
+                    `status=${resMpesa.status}; body=${text?.slice(0, 200)}`
+                );
+                return res.json({
+                    transactionId: transaction._id,
+                    checkoutRequestId: transaction.checkoutRequestId,
+                    merchantRequestId: transaction.merchantRequestId,
+                    amount: transaction.amount,
+                    devFallback: true,
+                    fallbackReason: "MPESA_UPSTREAM_5XX",
+                });
+            }
             throw new Error(`M-Pesa STK Push failed with status ${resMpesa.status}: ${text.slice(0, 100)}`);
         }
 
@@ -845,6 +990,7 @@ export const initiateMpesaStkPush = async (req, res) => {
             // In non-production, fallback to a local completion so booking flow remains testable.
             if (isKnownSandboxFalseNegative) {
                 const transaction = await Transaction.create({
+                    order: order._id,
                     user: req.user._id,
                     amount,
                     status: "COMPLETED",
@@ -865,11 +1011,19 @@ export const initiateMpesaStkPush = async (req, res) => {
                         mpesaErrorMessage: data.ResponseDescription || data.errorMessage || null,
                     },
                 });
+                await Order.updateOne(
+                    { _id: order._id },
+                    { $set: { status: "PAYMENT_COMPLETED", paymentTransaction: transaction._id } }
+                );
 
                 try {
                     await createBookingsForTransaction(transaction);
                 } catch (error) {
                     console.error("Failed to create bookings for sandbox fallback payment:", error);
+                    await Order.updateOne(
+                        { _id: order._id },
+                        { $set: { status: "FAILED" } }
+                    );
                 }
 
                 return res.json({
@@ -882,12 +1036,19 @@ export const initiateMpesaStkPush = async (req, res) => {
                 });
             }
 
+            if (order?._id) {
+                await Order.updateOne(
+                    { _id: order._id },
+                    { $set: { status: "FAILED" } }
+                );
+            }
             return res.status(400).json({
                 message: data.ResponseDescription || data.errorMessage || "Failed to initiate payment",
             });
         }
 
         const transaction = await Transaction.create({
+            order: order._id,
             user: req.user._id,
             amount,
             status: "PENDING",
@@ -901,9 +1062,14 @@ export const initiateMpesaStkPush = async (req, res) => {
             services: services.map((s) => s._id),
             provider: services[0].provider,
         });
+        await Order.updateOne(
+            { _id: order._id },
+            { $set: { status: "PAYMENT_PENDING", paymentTransaction: transaction._id } }
+        );
 
         res.json({
             transactionId: transaction._id,
+            orderId: order._id,
             checkoutRequestId: data.CheckoutRequestID,
             merchantRequestId: data.MerchantRequestID,
             amount: transaction.amount,
@@ -911,6 +1077,35 @@ export const initiateMpesaStkPush = async (req, res) => {
     } catch (error) {
         console.error("Failed to initiate M-Pesa STK push:", error);
         const errorMessage = error.message || "Failed to initiate M-Pesa payment";
+        const lower = String(errorMessage).toLowerCase();
+        const isTransientMpesaFailure =
+            lower.includes("status 503") ||
+            lower.includes("upstream connect error") ||
+            lower.includes("connection timeout") ||
+            lower.includes("fetch failed") ||
+            lower.includes("econnreset") ||
+            lower.includes("etimedout");
+
+        if (allowRuntimeFallback && isTransientMpesaFailure) {
+            const transaction = await createRuntimeFallbackPayment(
+                "MPESA_TRANSIENT_NETWORK",
+                errorMessage.slice(0, 500)
+            );
+            return res.json({
+                transactionId: transaction._id,
+                checkoutRequestId: transaction.checkoutRequestId,
+                merchantRequestId: transaction.merchantRequestId,
+                amount: transaction.amount,
+                devFallback: true,
+                fallbackReason: "MPESA_TRANSIENT_NETWORK",
+            });
+        }
+        if (order?._id) {
+            await Order.updateOne(
+                { _id: order._id },
+                { $set: { status: "FAILED" } }
+            );
+        }
         res.status(500).json({ 
             message: errorMessage,
             hint: errorMessage.includes("access token") || errorMessage.includes("credentials") 
@@ -950,6 +1145,17 @@ export const handleMpesaCallback = async (req, res) => {
         transaction.metadata = metadata;
         transaction.rawCallback = callback;
         await transaction.save();
+    }
+    if (transaction.order) {
+        await Order.updateOne(
+            { _id: transaction.order },
+            {
+                $set: {
+                    status: isSuccess ? "PAYMENT_COMPLETED" : "FAILED",
+                    paymentTransaction: transaction._id,
+                },
+            }
+        );
     }
 
     if (isSuccess && !transaction.bookingCreated && transaction.status === "COMPLETED") {

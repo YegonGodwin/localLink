@@ -1,7 +1,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { User, UserRole } from '../types';
-import { Bell, Home, Briefcase, Settings, LogOut, Menu, X, Users, Shield, DollarSign, MessageSquare, CreditCard, Search, User as UserIcon } from 'lucide-react';
+import { Bell, Home, Briefcase, Settings, LogOut, Menu, X, Users, Shield, DollarSign, MessageSquare, CreditCard, Search, User as UserIcon, ClipboardList } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { getSocket, joinUserRoom } from '../services/socketService';
@@ -394,6 +394,7 @@ export const Layout: React.FC<LayoutProps> = ({ user, onLogout, currentView, onC
           { id: 'dashboard', label: 'Dashboard', icon: Home },
           { id: 'explore', label: 'Explore Services', icon: Search },
           { id: 'requests', label: 'Service Requests', icon: Briefcase },
+          { id: 'orders', label: 'Orders', icon: ClipboardList },
           { id: 'messages', label: 'Messages', icon: MessageSquare, count: unreadMessagesCount },
           { id: 'payments', label: 'Payments', icon: CreditCard },
         ];
@@ -401,6 +402,7 @@ export const Layout: React.FC<LayoutProps> = ({ user, onLogout, currentView, onC
         return [
           { id: 'dashboard', label: 'Dashboard', icon: Home },
           { id: 'requests', label: 'Service Requests', icon: Briefcase, count: providerPendingRequestsCount },
+          { id: 'orders', label: 'Orders', icon: ClipboardList },
           { id: 'services', label: 'My Services', icon: Settings },
           { id: 'earnings', label: 'Earnings', icon: DollarSign },
           { id: 'messages', label: 'Messages', icon: MessageSquare, count: unreadMessagesCount },

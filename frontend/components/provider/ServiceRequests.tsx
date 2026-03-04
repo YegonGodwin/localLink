@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Card, Badge, Button } from '../Layout';
 import { Calendar, DollarSign, CheckCircle, XCircle, MessageSquare, Loader2, RefreshCcw } from 'lucide-react';
 import { Booking } from '../../types';
+import orderService from '../../services/orderService';
 
 interface ServiceRequestsProps {
   onMessageUser: (userId: string) => void;
@@ -16,24 +17,9 @@ export const ServiceRequests: React.FC<ServiceRequestsProps> = ({ onMessageUser 
   const fetchJobs = async () => {
     try {
       if (!refreshing) setLoading(true);
-      const token = localStorage.getItem('token');
-      const res = await fetch('/api/bookings/my-jobs', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (res.ok && Array.isArray(data)) {
-        const mapped: Booking[] = data.map((b: any) => ({
-          id: b._id,
-          serviceId: b.service?._id || '',
-          consumerId: b.consumer?._id || '',
-          providerId: b.provider?._id || '',
-          serviceTitle: b.service?.title || 'Service',
-          providerName: b.provider?.name || '',
-          consumerName: b.consumer?.name || 'Client',
-          date: b.date,
-          status: b.status,
-          price: b.price
-        }));
+      const orders = await orderService.getMyOrders();
+      const mapped: Booking[] = orderService.mapOrdersToBookings(orders);
+      if (Array.isArray(mapped)) {
         setJobs(mapped);
       } else {
         setJobs([]);

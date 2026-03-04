@@ -7,6 +7,7 @@ import { CreateService } from './CreateService';
 import { EditProfile } from './EditProfile';
 import { ProviderProfile } from '../consumer/ProviderProfile';
 import { User, Service } from '../../types';
+import { OrdersPage } from '../orders/OrdersPage';
 
 interface ProviderProps {
   user: User;
@@ -38,6 +39,10 @@ export const ProviderDashboard: React.FC<ProviderProps> = ({ user, currentView, 
 
   if (currentView === 'earnings') {
     return <Earnings />;
+  }
+
+  if (currentView === 'orders') {
+    return <OrdersPage role="PROVIDER" />;
   }
 
   if (currentView === 'profile') {

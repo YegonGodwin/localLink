@@ -70,6 +70,62 @@ export interface Transaction {
   user: string;
 }
 
+export interface OrderServiceSnapshot {
+  service: string;
+  title: string;
+  category?: string | null;
+  unitPrice: number;
+}
+
+export interface OrderPaymentTransaction {
+  _id: string;
+  status: 'COMPLETED' | 'PENDING' | 'FAILED' | 'REFUNDED';
+  amount: number;
+  createdAt?: string;
+}
+
+export interface OrderBooking {
+  _id: string;
+  status: Booking['status'];
+  price: number;
+  date?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  serviceTitleSnapshot?: string | null;
+  unitPriceSnapshot?: number | null;
+  service?: {
+    _id?: string;
+    title?: string;
+  };
+  provider?: {
+    _id?: string;
+    name?: string;
+  };
+  consumer?: {
+    _id?: string;
+    name?: string;
+  };
+}
+
+export interface Order {
+  _id: string;
+  status: 'INITIATED' | 'PAYMENT_PENDING' | 'PAYMENT_COMPLETED' | 'BOOKINGS_CREATED' | 'FAILED' | 'CANCELLED';
+  totalAmount: number;
+  currency?: string;
+  createdAt: string;
+  consumer?: {
+    _id?: string;
+    name?: string;
+  };
+  provider?: {
+    _id?: string;
+    name?: string;
+  };
+  services?: OrderServiceSnapshot[];
+  paymentTransaction?: OrderPaymentTransaction | null;
+  bookingIds?: OrderBooking[];
+}
+
 export interface ChatMessage {
   id: string;
   senderId: string;

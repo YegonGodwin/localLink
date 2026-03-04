@@ -3,6 +3,7 @@ import { Card, Badge } from '../Layout';
 import { TrendingUp, Users, DollarSign, Briefcase, Loader2 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { User, Booking, Transaction } from '../../types';
+import orderService from '../../services/orderService';
 
 interface DashboardHomeProps {
   user: User;
@@ -15,28 +16,12 @@ export const DashboardHome: React.FC<DashboardHomeProps> = ({ user }) => {
   const [loadingTransactions, setLoadingTransactions] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-
     const loadBookings = async () => {
       try {
         setLoadingBookings(true);
-        const res = await fetch('/api/bookings/my-jobs', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const data = await res.json();
-        if (res.ok && Array.isArray(data)) {
-          const mapped: Booking[] = data.map((b: any) => ({
-            id: b._id,
-            serviceId: b.service?._id || '',
-            consumerId: b.consumer?._id || '',
-            providerId: b.provider?._id || '',
-            serviceTitle: b.service?.title || 'Service',
-            providerName: b.provider?.name || '',
-            consumerName: b.consumer?.name || 'Client',
-            date: b.date,
-            status: b.status,
-            price: b.price
-          }));
+        const orders = await orderService.getMyOrders();
+        const mapped: Booking[] = orderService.mapOrdersToBookings(orders);
+        if (Array.isArray(mapped)) {
           setBookings(mapped);
         } else {
           setBookings([]);
@@ -51,19 +36,9 @@ export const DashboardHome: React.FC<DashboardHomeProps> = ({ user }) => {
     const loadTransactions = async () => {
       try {
         setLoadingTransactions(true);
-        const res = await fetch('/api/transactions', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const data = await res.json();
-        if (res.ok && Array.isArray(data)) {
-          const mapped: Transaction[] = data.map((t: any) => ({
-            id: t._id,
-            date: t.date,
-            amount: t.amount,
-            status: t.status,
-            description: t.description,
-            user: t.user?.name || user.name
-          }));
+        const orders = await orderService.getMyOrders();
+        const mapped: Transaction[] = orderService.mapOrdersToPayments(orders, 'PROVIDER');
+        if (Array.isArray(mapped)) {
           setTransactions(mapped);
         } else {
           setTransactions([]);

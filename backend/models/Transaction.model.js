@@ -6,6 +6,12 @@ const transactionSchema = new mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             ref: "Booking",
         },
+        order: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Order",
+            default: null,
+            index: true,
+        },
         escrow: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "Escrow",

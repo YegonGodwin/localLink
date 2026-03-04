@@ -8,6 +8,12 @@ const escrowSchema = new mongoose.Schema(
             ref: "Booking",
             index: true,
         },
+        order: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Order",
+            default: null,
+            index: true,
+        },
         consumer: {
             type: mongoose.Schema.Types.ObjectId,
             required: true,

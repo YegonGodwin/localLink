@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Card } from '../Layout';
 import { Loader2 } from 'lucide-react';
 import { Transaction } from '../../types';
+import orderService from '../../services/orderService';
 
 export const Payments: React.FC = () => {
   const [payments, setPayments] = useState<Transaction[]>([]);
@@ -9,25 +10,13 @@ export const Payments: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-
     const loadPayments = async () => {
       try {
         setLoading(true);
         setError(null);
-        const res = await fetch('/api/transactions', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const data = await res.json();
-        if (res.ok && Array.isArray(data)) {
-          const mapped: Transaction[] = data.map((t: any) => ({
-            id: t._id,
-            date: t.date || t.createdAt,
-            amount: t.amount,
-            status: t.status,
-            description: t.booking?.service?.title || t.description,
-            user: t.booking?.provider?.name || t.user?.name || 'Provider'
-          }));
+        const orders = await orderService.getMyOrders();
+        const mapped: Transaction[] = orderService.mapOrdersToPayments(orders, 'CONSUMER');
+        if (Array.isArray(mapped)) {
           setPayments(mapped);
         } else {
           setPayments([]);

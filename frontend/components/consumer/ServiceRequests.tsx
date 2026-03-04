@@ -3,6 +3,7 @@ import { Card, Badge, Button, Modal } from '../Layout';
 import { Calendar, Clock, MessageSquare, Loader2, RefreshCcw, Star } from 'lucide-react';
 import { Booking } from '../../types';
 import reviewService from '../../services/reviewService';
+import orderService from '../../services/orderService';
 
 interface ServiceRequestsProps {
   onMessageProvider: (userId: string) => void;
@@ -50,24 +51,9 @@ export const ServiceRequests: React.FC<ServiceRequestsProps> = ({ onMessageProvi
   const fetchBookings = async () => {
     try {
       if (!refreshing) setLoading(true);
-      const token = localStorage.getItem('token');
-      const res = await fetch('/api/bookings/my-bookings', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (res.ok && Array.isArray(data)) {
-        const mapped: Booking[] = data.map((b: any) => ({
-          id: b._id,
-          serviceId: b.service?._id || '',
-          consumerId: b.consumer?._id || '',
-          providerId: b.provider?._id || '',
-          serviceTitle: b.service?.title || 'Service',
-          providerName: b.provider?.name || 'Provider',
-          consumerName: b.consumer?.name || 'You',
-          date: b.date,
-          status: b.status,
-          price: b.price
-        }));
+      const orders = await orderService.getMyOrders();
+      const mapped: Booking[] = orderService.mapOrdersToBookings(orders);
+      if (Array.isArray(mapped)) {
         setBookings(mapped);
         await syncReviewedBookings(mapped.filter((booking) => booking.status === 'COMPLETED'));
       } else {

@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Review, Service, User } from '../../types';
+import { Service } from '../../types';
 import { Card, Button, Badge, Modal, cn } from '../Layout';
 import { ArrowLeft, Star, Phone, Mail, Globe, MapPin, CheckCircle, PlusCircle, Loader2, Smartphone, ShieldCheck, CreditCard, ChevronRight } from 'lucide-react';
-import reviewService from '../../services/reviewService';
 
 interface ProviderProfileProps {
   service: Service;
-  canLike?: boolean;
   onBack: () => void;
   bookingCart: string[];
   toggleCartItem: (serviceId: string) => void;
@@ -16,11 +14,10 @@ interface ProviderProfileProps {
   onMessageProvider: (userId: string) => void;
 }
 
-type PaymentStep = 'summary' | 'phone' | 'processing' | 'success';
+type PaymentStep = 'summary' | 'phone' | 'processing' | 'pending_confirmation' | 'success';
 
 export const ProviderProfile: React.FC<ProviderProfileProps> = ({
   service: selectedService,
-  canLike = false,
   onBack,
   bookingCart,
   toggleCartItem,
@@ -38,19 +35,6 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [providerServices, setProviderServices] = useState<Service[]>([]);
   const [servicesLoading, setServicesLoading] = useState(true);
-  const [providerProfile, setProviderProfile] = useState<Partial<User> | null>(null);
-  const [providerLoading, setProviderLoading] = useState(true);
-  const [reviews, setReviews] = useState<Review[]>([]);
-  const [reviewsLoading, setReviewsLoading] = useState(true);
-  const [reviewsError, setReviewsError] = useState<string | null>(null);
-  const [liked, setLiked] = useState(false);
-  const [likesCount, setLikesCount] = useState(0);
-  const [liking, setLiking] = useState(false);
-  const [likeError, setLikeError] = useState<string | null>(null);
-  const [serviceMetrics, setServiceMetrics] = useState({
-    rating: selectedService.rating || 0,
-    reviews: selectedService.reviews || 0,
-  });
 
   // Load provider services from API so consumers see live listings
   useEffect(() => {
@@ -93,143 +77,6 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
     fetchProviderServices();
   }, [selectedService]);
 
-  useEffect(() => {
-    const fetchProviderProfile = async () => {
-      try {
-        setProviderLoading(true);
-        const res = await fetch(`/api/users/providers/${selectedService.providerId}`);
-        const data = await res.json();
-        if (res.ok) {
-          setProviderProfile(data);
-        } else {
-          setProviderProfile(null);
-        }
-      } catch (error) {
-        console.error('Error fetching provider profile:', error);
-        setProviderProfile(null);
-      } finally {
-        setProviderLoading(false);
-      }
-    };
-
-    if (selectedService.providerId) {
-      fetchProviderProfile();
-    }
-  }, [selectedService.providerId]);
-
-  useEffect(() => {
-    const fetchLikeStatus = async () => {
-      if (!canLike || !selectedService.providerId) {
-        setLiked(false);
-        setLikesCount(0);
-        return;
-      }
-
-      try {
-        const token = localStorage.getItem('token');
-        const res = await fetch(`/api/users/providers/${selectedService.providerId}/like-status`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-        if (res.ok) {
-          setLiked(Boolean(data.liked));
-          setLikesCount(Number(data.likesCount || 0));
-        }
-      } catch (error) {
-        console.error('Error fetching like status:', error);
-      }
-    };
-
-    fetchLikeStatus();
-  }, [canLike, selectedService.providerId]);
-
-  const handleToggleLike = async () => {
-    if (!canLike || liking || !selectedService.providerId) {
-      return;
-    }
-
-    try {
-      setLiking(true);
-      setLikeError(null);
-      const token = localStorage.getItem('token');
-      const res = await fetch(`/api/users/providers/${selectedService.providerId}/like`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data?.message || 'Unable to update like');
-      }
-      setLiked(Boolean(data.liked));
-      setLikesCount(Number(data.likesCount || 0));
-    } catch (error: any) {
-      setLikeError(error?.message || 'Unable to update like');
-    } finally {
-      setLiking(false);
-    }
-  };
-
-  useEffect(() => {
-    setServiceMetrics({
-      rating: selectedService.rating || 0,
-      reviews: selectedService.reviews || 0,
-    });
-  }, [selectedService.id, selectedService.rating, selectedService.reviews]);
-
-  useEffect(() => {
-    const refreshServiceMetrics = async () => {
-      try {
-        const res = await fetch(`/api/services/${selectedService.id}`);
-        const data = await res.json();
-        if (res.ok) {
-          setServiceMetrics({
-            rating: data.rating ?? 0,
-            reviews: data.reviews ?? 0,
-          });
-        }
-      } catch (error) {
-        console.error('Error refreshing service metrics:', error);
-      }
-    };
-
-    if (selectedService.id) {
-      refreshServiceMetrics();
-    }
-
-    const handleReviewCreated = (event: Event) => {
-      const customEvent = event as CustomEvent<{ serviceId?: string }>;
-      if (customEvent.detail?.serviceId === selectedService.id) {
-        refreshServiceMetrics();
-      }
-    };
-
-    window.addEventListener('review:created', handleReviewCreated as EventListener);
-    return () => {
-      window.removeEventListener('review:created', handleReviewCreated as EventListener);
-    };
-  }, [selectedService.id]);
-
-  useEffect(() => {
-    const fetchServiceReviews = async () => {
-      try {
-        setReviewsLoading(true);
-        setReviewsError(null);
-        const data = await reviewService.getServiceReviews(selectedService.id);
-        setReviews(data);
-      } catch (error: any) {
-        console.error('Error fetching reviews:', error);
-        setReviews([]);
-        setReviewsError(error?.message || 'Unable to load reviews');
-      } finally {
-        setReviewsLoading(false);
-      }
-    };
-
-    if (selectedService.id) {
-      fetchServiceReviews();
-    }
-  }, [selectedService.id]);
-
   // Calculate cart details
   const selectedServicesList = providerServices.filter(s => bookingCart.includes(s.id));
   const totalAmount = selectedServicesList.reduce((sum, item) => sum + item.price, 0);
@@ -248,56 +95,40 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
   const pollPaymentStatus = async (txId: string) => {
     const token = localStorage.getItem('token');
     const startedAt = Date.now();
-    const maxWaitMs = 180000;
-    const pollIntervalMs = 3000;
+    const maxWaitMs = 240000;
 
-    const checkStatus = async () => {
-      const res = await fetch(`/api/transactions/${txId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (!res.ok || !data?.status) return null;
-      return data;
-    };
+    return new Promise((resolve, reject) => {
+      const intervalId = setInterval(async () => {
+        const elapsed = Date.now() - startedAt;
+        setProcessingTime(Math.min(95, Math.round((elapsed / maxWaitMs) * 95)));
 
-    while (Date.now() - startedAt <= maxWaitMs) {
-      const elapsed = Date.now() - startedAt;
-      setProcessingTime(Math.min(95, Math.round((elapsed / maxWaitMs) * 95)));
-
-      try {
-        const data = await checkStatus();
-        if (data?.status === 'COMPLETED') {
-          return data;
+        if (elapsed > maxWaitMs) {
+          clearInterval(intervalId);
+          const timeoutError = new Error('Payment confirmation is taking longer than expected.');
+          (timeoutError as any).code = 'PENDING_CONFIRMATION';
+          reject(timeoutError);
+          return;
         }
-        if (data?.status === 'FAILED') {
-          throw new Error('Payment failed or was cancelled.');
+
+        try {
+          const res = await fetch(`/api/transactions/${txId}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          const data = await res.json();
+          if (res.ok && data?.status) {
+            if (data.status === 'COMPLETED') {
+              clearInterval(intervalId);
+              resolve(data);
+            } else if (data.status === 'FAILED') {
+              clearInterval(intervalId);
+              reject(new Error('Payment failed or was cancelled.'));
+            }
+          }
+        } catch (error) {
+          // Keep polling on transient errors
         }
-      } catch (error: any) {
-        if (error?.message === 'Payment failed or was cancelled.') {
-          throw error;
-        }
-        // Keep polling on transient errors
-      }
-
-      await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
-    }
-
-    // One final check to avoid false timeout when callback lands near the deadline.
-    try {
-      const finalData = await checkStatus();
-      if (finalData?.status === 'COMPLETED') {
-        return finalData;
-      }
-      if (finalData?.status === 'FAILED') {
-        throw new Error('Payment failed or was cancelled.');
-      }
-    } catch (error: any) {
-      if (error?.message === 'Payment failed or was cancelled.') {
-        throw error;
-      }
-    }
-
-    throw new Error('Payment confirmation is taking longer than expected. Please wait a moment and check your Payments page.');
+      }, 3000);
+    });
   };
 
   const handlePay = async () => {
@@ -320,15 +151,7 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
         })
       });
 
-      let data;
-      const contentType = res.headers.get("content-type");
-      if (contentType && contentType.includes("application/json")) {
-        data = await res.json();
-      } else {
-        const text = await res.text();
-        throw new Error(text || `Server error: ${res.status} ${res.statusText}`);
-      }
-
+      const data = await res.json();
       if (!res.ok) {
         throw new Error(data.message || 'Failed to initiate payment');
       }
@@ -340,23 +163,39 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
       setPaymentStep('success');
     } catch (error: any) {
       console.error(error);
-      setPaymentError(error.message || 'Payment failed');
-      setPaymentStep('phone');
+      if (error?.code === 'PENDING_CONFIRMATION') {
+        setPaymentError('Payment confirmation is delayed. If you completed the STK prompt, tap "Check Again".');
+        setPaymentStep('pending_confirmation');
+      } else {
+        setPaymentError(error.message || 'Payment failed');
+        setPaymentStep('phone');
+      }
     } finally {
       setCreatingBooking(false);
     }
   };
 
-  const providerName = providerProfile?.name || selectedService.providerName;
-  const providerAvatar = providerProfile?.avatar || selectedService.providerAvatar;
-  const providerTagline = providerProfile?.tagline || selectedService.title;
-  const providerBio = providerProfile?.bio || 'This provider has not added a bio yet.';
-  const providerCover = providerProfile?.coverImage || selectedService.image;
-  const providerPortfolio = providerProfile?.portfolio || [];
-  const providerEmail = providerProfile?.email || `contact@${providerName.toLowerCase().replace(/ /g, '').replace(/'/g, '')}.com`;
-  const providerPhone = providerProfile?.phone || '(123) 456-7890';
-  const providerWebsite = providerProfile?.website || `${providerName.toLowerCase().replace(/ /g, '').replace(/'/g, '')}.com`;
-  const providerAddress = providerProfile?.address || 'Address not provided';
+  const handleCheckAgain = async () => {
+    if (!transactionId || creatingBooking) return;
+    try {
+      setCreatingBooking(true);
+      setPaymentError(null);
+      setPaymentStep('processing');
+      await pollPaymentStatus(transactionId);
+      setProcessingTime(100);
+      setPaymentStep('success');
+    } catch (error: any) {
+      if (error?.code === 'PENDING_CONFIRMATION') {
+        setPaymentError('Still waiting for callback confirmation. You can check again shortly.');
+        setPaymentStep('pending_confirmation');
+      } else {
+        setPaymentError(error?.message || 'Unable to verify payment yet.');
+        setPaymentStep('pending_confirmation');
+      }
+    } finally {
+      setCreatingBooking(false);
+    }
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -368,45 +207,30 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
         <span>/</span>
         <span>{selectedService.category}</span>
         <span>/</span>
-        <span className="text-white font-medium">{providerName}</span>
+        <span className="text-white font-medium">{selectedService.providerName}</span>
       </div>
 
       {/* Hero Image */}
       <div className="h-64 md:h-80 w-full rounded-2xl overflow-hidden relative">
-        <img src={providerCover} alt={providerName} className="w-full h-full object-cover" />
+        <img src={selectedService.image} alt={selectedService.title} className="w-full h-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent opacity-80"></div>
       </div>
 
       {/* Header Profile Info */}
       <div className="relative -mt-20 px-4 md:px-8 flex flex-col md:flex-row items-end md:items-center gap-6">
         <div className="w-32 h-32 rounded-xl bg-slate-800 border-4 border-slate-950 overflow-hidden shadow-2xl flex-shrink-0">
-          <img src={providerAvatar} alt={providerName} className="w-full h-full object-cover" />
+          <img src={selectedService.providerAvatar} alt={selectedService.providerName} className="w-full h-full object-cover" />
         </div>
         <div className="flex-1 mb-2">
-          <h1 className="text-3xl font-bold text-white mb-1">{providerName}</h1>
-          <p className="text-slate-400 text-lg mb-2">{providerTagline}</p>
-          <div className="flex items-center gap-3 flex-wrap">
+          <h1 className="text-3xl font-bold text-white mb-1">{selectedService.providerName}</h1>
+          <p className="text-slate-400 text-lg mb-2">{selectedService.title}</p>
+          <div className="flex items-center gap-2">
             <div className="flex items-center text-yellow-400">
               <Star size={16} fill="currentColor" />
-              <span className="ml-1 font-bold text-white">{serviceMetrics.rating}</span>
+              <span className="ml-1 font-bold text-white">{selectedService.rating}</span>
             </div>
-            <span className="text-slate-500">({serviceMetrics.reviews} reviews)</span>
-            {canLike && (
-              <>
-                <Button
-                  variant={liked ? 'secondary' : 'primary'}
-                  size="sm"
-                  onClick={handleToggleLike}
-                  disabled={liking}
-                  className={liked ? 'border-rose-500/40 text-rose-300' : ''}
-                >
-                  {liking ? 'Please wait...' : liked ? 'Unlike Profile' : 'Like Profile'}
-                </Button>
-                <span className="text-slate-500 text-sm">{likesCount} like{likesCount === 1 ? '' : 's'}</span>
-              </>
-            )}
+            <span className="text-slate-500">({selectedService.reviews} reviews)</span>
           </div>
-          {likeError && <p className="text-xs text-red-400 mt-2">{likeError}</p>}
         </div>
       </div>
 
@@ -437,16 +261,16 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
             <h3 className="font-bold text-white mb-4">Contact Information</h3>
             <div className="space-y-4 text-sm">
               <div className="flex items-center gap-3 text-slate-300">
-                <Phone size={18} className="text-slate-500" /> {providerPhone}
+                <Phone size={18} className="text-slate-500" /> (123) 456-7890
               </div>
               <div className="flex items-center gap-3 text-slate-300">
-                <Mail size={18} className="text-slate-500" /> {providerEmail}
+                <Mail size={18} className="text-slate-500" /> contact@{selectedService.providerName.toLowerCase().replace(/ /g, '').replace(/'/g, '')}.com
               </div>
               <div className="flex items-center gap-3 text-slate-300">
-                <Globe size={18} className="text-slate-500" /> {providerWebsite}
+                <Globe size={18} className="text-slate-500" /> {selectedService.providerName.toLowerCase().replace(/ /g, '').replace(/'/g, '')}.com
               </div>
               <div className="flex items-center gap-3 text-slate-300">
-                <MapPin size={18} className="text-slate-500" /> {providerAddress}
+                <MapPin size={18} className="text-slate-500" /> 123 Main Street, New York, USA
               </div>
             </div>
           </Card>
@@ -490,13 +314,10 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
           {/* About */}
           {activeTab === 'About' && (
             <div id="about" className="animate-in fade-in duration-300">
-              <h3 className="text-xl font-bold text-white mb-4">About {providerName}</h3>
+              <h3 className="text-xl font-bold text-white mb-4">About {selectedService.providerName}</h3>
               <p className="text-slate-400 leading-relaxed mb-4">
-                {providerBio}
+                With over 15 years of experience serving the New York area, {selectedService.providerName} is your trusted partner for all residential and commercial needs. We pride ourselves on quality workmanship, transparent pricing, and unparalleled customer service. Our team of certified and insured professionals is equipped to handle everything from routine maintenance to complex installations, ensuring every job is done right the first time.
               </p>
-              {providerLoading && (
-                <p className="text-xs text-slate-500">Refreshing profile details...</p>
-              )}
             </div>
           )}
 
@@ -564,20 +385,16 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
           {activeTab === 'Portfolio' && (
             <div id="portfolio" className="animate-in fade-in duration-300">
               <h3 className="text-xl font-bold text-white mb-4">Portfolio</h3>
-              {providerPortfolio.length > 0 ? (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  {providerPortfolio.map((src, index) => (
-                    <div key={`${src}-${index}`} className="aspect-square rounded-xl overflow-hidden bg-slate-800 relative group">
-                      <img src={src} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <Button variant="ghost" className="text-white border border-white/30 hover:bg-white/20">View</Button>
-                      </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                {[1, 2, 3, 4, 5, 6].map((i) => (
+                  <div key={i} className="aspect-square rounded-xl overflow-hidden bg-slate-800 relative group">
+                    <img src={`https://picsum.photos/seed/${selectedService.id + i}/400/400`} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <Button variant="ghost" className="text-white border border-white/30 hover:bg-white/20">View</Button>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-slate-500 text-sm">No portfolio images available yet.</div>
-              )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -585,52 +402,25 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
           {activeTab === 'Reviews' && (
             <div id="reviews" className="animate-in fade-in duration-300">
               <h3 className="text-xl font-bold text-white mb-4">Customer Reviews</h3>
-              {reviewsLoading ? (
-                <div className="flex items-center gap-2 text-slate-400">
-                  <Loader2 size={18} className="animate-spin text-blue-500" />
-                  Loading reviews...
-                </div>
-              ) : reviewsError ? (
-                <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-4">
-                  {reviewsError}
-                </div>
-              ) : reviews.length === 0 ? (
-                <div className="text-slate-500 text-sm">No reviews yet for this service.</div>
-              ) : (
-                <div className="space-y-4">
-                  {reviews.map((review) => (
-                    <div key={review.id} className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-                      <div className="flex justify-between items-start mb-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-slate-800 overflow-hidden flex items-center justify-center font-bold text-slate-500">
-                            {review.consumerAvatar ? (
-                              <img src={review.consumerAvatar} alt={review.consumerName} className="w-full h-full object-cover" />
-                            ) : (
-                              review.consumerName.charAt(0).toUpperCase()
-                            )}
-                          </div>
-                          <div>
-                            <h5 className="font-bold text-white">{review.consumerName}</h5>
-                            <p className="text-xs text-slate-500">{new Date(review.createdAt).toLocaleDateString()}</p>
-                          </div>
-                        </div>
-                        <div className="flex text-yellow-400">
-                          {[1, 2, 3, 4, 5].map((value) => (
-                            <Star
-                              key={value}
-                              size={14}
-                              fill={value <= review.rating ? 'currentColor' : 'none'}
-                            />
-                          ))}
+              <div className="space-y-4">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center font-bold text-slate-500">U{i}</div>
+                        <div>
+                          <h5 className="font-bold text-white">Satisfied Customer</h5>
+                          <p className="text-xs text-slate-500">2 days ago</p>
                         </div>
                       </div>
-                      <p className="text-slate-400 text-sm">
-                        {review.comment || 'No comment provided.'}
-                      </p>
+                      <div className="flex text-yellow-400">
+                        {[1, 2, 3, 4, 5].map(s => <Star key={s} size={14} fill="currentColor" />)}
+                      </div>
                     </div>
-                  ))}
-                </div>
-              )}
+                    <p className="text-slate-400 text-sm">Great service! The provider was on time, professional, and did an excellent job. Would definitely recommend.</p>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -653,12 +443,12 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
                       {selectedServicesList.map(item => (
                         <div key={item.id} className="flex justify-between text-sm">
                           <span className="text-white">{item.title}</span>
-                          <span className="text-slate-400 font-mono">Ksh.{item.price}</span>
+                          <span className="text-slate-400 font-mono">Ksh {item.price}</span>
                         </div>
                       ))}
                       <div className="border-t border-slate-800 pt-3 flex justify-between font-bold text-base">
                         <span className="text-white">Total</span>
-                        <span className="text-emerald-400">Ksh.{totalAmount}</span>
+                        <span className="text-emerald-400">Ksh {totalAmount}</span>
                       </div>
                     </div>
                   </div>
@@ -691,7 +481,7 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
                   <Smartphone className="text-emerald-500" size={32} />
                 </div>
                 <h3 className="text-xl font-bold text-white mb-1">M-Pesa Payment</h3>
-                <p className="text-slate-400 text-sm">Enter your M-Pesa number to pay <span className="text-white font-bold">Ksh.{totalAmount}</span></p>
+                <p className="text-slate-400 text-sm">Enter your M-Pesa number to pay <span className="text-white font-bold">Ksh {totalAmount}</span></p>
               </div>
 
               <div className="space-y-4">
@@ -755,6 +545,33 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
             </div>
           )}
 
+          {paymentStep === 'pending_confirmation' && (
+            <div className="space-y-5 animate-in fade-in duration-300">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-amber-500/20">
+                  <Smartphone className="text-amber-400" size={30} />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">Awaiting Confirmation</h3>
+                <p className="text-slate-400 text-sm">
+                  We have not received the M-Pesa callback yet. If you completed the STK prompt, check again.
+                </p>
+              </div>
+              {paymentError && (
+                <div className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
+                  {paymentError}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Button className="flex-1" onClick={handleCheckAgain} disabled={creatingBooking}>
+                  {creatingBooking ? 'Checking...' : 'Check Again'}
+                </Button>
+                <Button variant="secondary" className="flex-1" onClick={onPaymentSuccess}>
+                  Go to Requests
+                </Button>
+              </div>
+            </div>
+          )}
+
           {paymentStep === 'success' && (
             <div className="flex-1 flex flex-col items-center justify-center text-center py-4 animate-in zoom-in-95 duration-300">
               <div className="w-20 h-20 bg-emerald-500/20 text-emerald-500 rounded-full flex items-center justify-center mb-6 ring-1 ring-emerald-500/50">
@@ -762,7 +579,7 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
               </div>
               <h3 className="text-2xl font-bold text-white mb-2">Booking Confirmed!</h3>
               <p className="text-slate-400 text-sm mb-6 max-w-xs">
-                Your payment of <span className="text-white font-bold">Ksh.{totalAmount}</span> was successful. The provider has been notified.
+                Your payment of <span className="text-white font-bold">Ksh {totalAmount}</span> was successful. The provider has been notified.
               </p>
 
               <div className="bg-slate-950 border border-slate-800 rounded-lg p-4 w-full mb-6 text-left">
