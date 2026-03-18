@@ -438,10 +438,10 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
                                  </div>
                                  <Button
                                     variant="secondary"
-                                    className="text-xs px-3"
+                                    className="text-xs px-4 bg-blue-600/10 text-blue-400 border-blue-600/20 hover:bg-blue-600 hover:text-white"
                                     onClick={() => onSelectService(service)}
                                  >
-                                    View Profile
+                                    Book Now
                                  </Button>
                               </div>
                            ))}

@@ -14,7 +14,7 @@ interface ProviderProfileProps {
   onMessageProvider: (userId: string) => void;
 }
 
-type PaymentStep = 'summary' | 'phone' | 'processing' | 'pending_confirmation' | 'success';
+type PaymentStep = 'schedule' | 'details' | 'summary' | 'phone' | 'processing' | 'pending_confirmation' | 'success';
 
 export const ProviderProfile: React.FC<ProviderProfileProps> = ({
   service: selectedService,
@@ -27,14 +27,24 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
   onMessageProvider
 }) => {
   const [activeTab, setActiveTab] = useState('About');
-  const [paymentStep, setPaymentStep] = useState<PaymentStep>('summary');
+  const [paymentStep, setPaymentStep] = useState<PaymentStep>('schedule');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [bookingDate, setBookingDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [bookingTimeSlot, setBookingTimeSlot] = useState<string>('09:00 AM');
+  const [bookingNotes, setBookingNotes] = useState<string>('');
   const [processingTime, setProcessingTime] = useState(0);
   const [creatingBooking, setCreatingBooking] = useState(false);
   const [transactionId, setTransactionId] = useState<string | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [providerServices, setProviderServices] = useState<Service[]>([]);
   const [servicesLoading, setServicesLoading] = useState(true);
+
+  // Time slots for scheduling
+  const timeSlots = [
+    '08:00 AM', '09:00 AM', '10:00 AM', '11:00 AM', 
+    '12:00 PM', '01:00 PM', '02:00 PM', '03:00 PM', 
+    '04:00 PM', '05:00 PM'
+  ];
 
   // Load provider services from API so consumers see live listings
   useEffect(() => {
@@ -84,11 +94,12 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
   // Reset payment step when modal opens/closes
   useEffect(() => {
     if (showBookingModal) {
-      setPaymentStep('summary');
+      setPaymentStep('schedule');
       setPhoneNumber('');
       setProcessingTime(0);
       setTransactionId(null);
       setPaymentError(null);
+      setBookingNotes('');
     }
   }, [showBookingModal]);
 
@@ -147,7 +158,9 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
         },
         body: JSON.stringify({
           phoneNumber,
-          serviceIds: selectedServicesList.map((item) => item.id)
+          serviceIds: selectedServicesList.map((item) => item.id),
+          date: `${bookingDate} ${bookingTimeSlot}`,
+          notes: bookingNotes
         })
       });
 
@@ -426,20 +439,124 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
         </div>
       </div>
 
-      {/* M-Pesa Payment Modal */}
+      {/* Booking & Payment Modal */}
       <Modal
         isOpen={showBookingModal}
         onClose={() => setShowBookingModal(false)}
-        title={paymentStep === 'success' ? 'Payment Successful' : 'Complete Booking'}
+        title={paymentStep === 'success' ? 'Payment Successful' : 'Complete Your Booking'}
       >
-        <div className="min-h-[300px] flex flex-col">
+        <div className="min-h-[400px] flex flex-col">
+          {/* Progress Steps Indicator */}
+          {['schedule', 'details', 'summary', 'phone'].includes(paymentStep) && (
+            <div className="flex items-center justify-between mb-8 px-2">
+              {[
+                { step: 'schedule', label: 'Schedule' },
+                { step: 'details', label: 'Details' },
+                { step: 'summary', label: 'Review' },
+                { step: 'phone', label: 'Pay' }
+              ].map((item, idx, arr) => {
+                const stepIdx = arr.findIndex(a => a.step === paymentStep);
+                const isActive = item.step === paymentStep;
+                const isPast = arr.findIndex(a => a.step === item.step) < stepIdx;
+                
+                return (
+                  <React.Fragment key={item.step}>
+                    <div className="flex flex-col items-center gap-2">
+                      <div className={cn(
+                        "w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all",
+                        isActive ? "bg-blue-600 text-white ring-4 ring-blue-900/30" : 
+                        isPast ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-500"
+                      )}>
+                        {isPast ? <CheckCircle size={14} /> : idx + 1}
+                      </div>
+                      <span className={cn(
+                        "text-[10px] font-medium uppercase tracking-wider",
+                        isActive ? "text-blue-400" : "text-slate-500"
+                      )}>{item.label}</span>
+                    </div>
+                    {idx < arr.length - 1 && (
+                      <div className={cn(
+                        "flex-1 h-px mb-6",
+                        idx < stepIdx ? "bg-emerald-600" : "bg-slate-800"
+                      )}></div>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          )}
+
+          {paymentStep === 'schedule' && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-slate-300 mb-2 block">Select Date</label>
+                  <input
+                    type="date"
+                    min={new Date().toISOString().split('T')[0]}
+                    value={bookingDate}
+                    onChange={(e) => setBookingDate(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:border-blue-500 outline-none transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-300 mb-2 block">Select Time Slot</label>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    {timeSlots.map(slot => (
+                      <button
+                        key={slot}
+                        onClick={() => setBookingTimeSlot(slot)}
+                        className={cn(
+                          "px-3 py-2 rounded-lg text-xs font-medium border transition-all",
+                          bookingTimeSlot === slot ? "bg-blue-600 border-blue-500 text-white" : "bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-600 hover:text-white"
+                        )}
+                      >
+                        {slot}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <Button 
+                className="w-full py-3" 
+                disabled={!bookingDate || !bookingTimeSlot}
+                onClick={() => setPaymentStep('details')}
+              >
+                Continue to Details <ChevronRight size={16} className="ml-2" />
+              </Button>
+            </div>
+          )}
+
+          {paymentStep === 'details' && (
+            <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
+              <div>
+                <label className="text-sm font-medium text-slate-300 mb-2 block">Additional Notes (Optional)</label>
+                <textarea
+                  placeholder="Describe your specific needs or any details the provider should know..."
+                  value={bookingNotes}
+                  onChange={(e) => setBookingNotes(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:border-blue-500 outline-none transition-all min-h-[150px] resize-none"
+                />
+              </div>
+              <div className="flex gap-3">
+                <Button variant="secondary" className="flex-1" onClick={() => setPaymentStep('schedule')}>Back</Button>
+                <Button className="flex-[2]" onClick={() => setPaymentStep('summary')}>Review Order</Button>
+              </div>
+            </div>
+          )}
+
           {paymentStep === 'summary' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
               {selectedServicesList.length > 0 ? (
                 <>
                   <div className="bg-slate-950/50 rounded-lg p-4 border border-slate-800">
-                    <h4 className="text-sm font-semibold text-slate-400 mb-3 uppercase tracking-wider">Order Summary</h4>
-                    <div className="space-y-3">
+                    <div className="flex justify-between items-center mb-4">
+                      <h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">Order Summary</h4>
+                      <Badge variant="outline" className="text-blue-400 border-blue-400/30">
+                        {new Date(bookingDate).toLocaleDateString()} at {bookingTimeSlot}
+                      </Badge>
+                    </div>
+                    <div className="space-y-3 mb-4">
                       {selectedServicesList.map(item => (
                         <div key={item.id} className="flex justify-between text-sm">
                           <span className="text-white">{item.title}</span>
@@ -451,16 +568,23 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
                         <span className="text-emerald-400">Ksh {totalAmount}</span>
                       </div>
                     </div>
+                    {bookingNotes && (
+                      <div className="border-t border-slate-800 pt-3">
+                        <p className="text-[10px] text-slate-500 uppercase font-bold mb-1">Your Notes</p>
+                        <p className="text-xs text-slate-400 italic line-clamp-2">"{bookingNotes}"</p>
+                      </div>
+                    )}
                   </div>
                   <div className="bg-blue-900/10 border border-blue-500/20 rounded-lg p-4 flex gap-3">
                     <ShieldCheck className="text-blue-500 flex-shrink-0" size={20} />
                     <p className="text-xs text-blue-200">
-                      Your payment is held in escrow until the service is marked as completed.
+                      Payment is held in secure escrow. The pro only gets paid after you confirm the job is done.
                     </p>
                   </div>
-                  <Button className="w-full py-3" onClick={() => setPaymentStep('phone')}>
-                    Proceed to Payment <ChevronRight size={16} className="ml-2" />
-                  </Button>
+                  <div className="flex gap-3">
+                    <Button variant="secondary" className="flex-1" onClick={() => setPaymentStep('details')}>Back</Button>
+                    <Button className="flex-[2]" onClick={() => setPaymentStep('phone')}>Proceed to Payment</Button>
+                  </div>
                 </>
               ) : (
                 <div className="text-center py-10">
@@ -498,27 +622,24 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
                       autoFocus
                     />
                   </div>
-                  <p className="text-xs text-slate-500">We will send an STK push to this number.</p>
+                  <p className="text-xs text-slate-500 text-center">We will send an STK push to this number.</p>
                 </div>
 
-                <Button
-                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-900/20"
-                  onClick={handlePay}
-                  disabled={phoneNumber.length < 9 || creatingBooking}
-                >
-                  {creatingBooking ? 'Processing...' : 'Pay Now'}
-                </Button>
+                <div className="flex gap-3">
+                   <Button variant="secondary" className="flex-1" onClick={() => setPaymentStep('summary')}>Back</Button>
+                   <Button
+                    className="flex-[2] py-3 bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-900/20"
+                    onClick={handlePay}
+                    disabled={phoneNumber.length < 9 || creatingBooking}
+                  >
+                    {creatingBooking ? 'Processing...' : 'Pay Now'}
+                  </Button>
+                </div>
                 {paymentError && (
                   <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-3">
                     {paymentError}
                   </div>
                 )}
-                <button
-                  onClick={() => setPaymentStep('summary')}
-                  className="w-full text-center text-sm text-slate-500 hover:text-slate-300 mt-2"
-                >
-                  Back to Summary
-                </button>
               </div>
             </div>
           )}

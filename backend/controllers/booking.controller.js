@@ -38,7 +38,7 @@ const canTransitionBookingStatus = ({ role, fromStatus, toStatus }) => {
 // @route   POST /api/bookings
 // @access  Private
 export const createBooking = async (req, res) => {
-    const { serviceId, date, price } = req.body;
+    const { serviceId, date, price, notes } = req.body;
 
     const service = await Service.findById(serviceId);
 
@@ -56,6 +56,7 @@ export const createBooking = async (req, res) => {
         date: date || new Date(),
         price: bookingPrice,
         currency: "KES",
+        notes: notes || null,
         serviceTitleSnapshot: service.title,
         unitPriceSnapshot: bookingPrice,
         requestedAt: new Date(),

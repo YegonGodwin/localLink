@@ -21,6 +21,14 @@ export const ConsumerDashboard: React.FC<ConsumerProps> = ({ user, currentView, 
   const [bookingCart, setBookingCart] = useState<string[]>([]);
   const [showBookingModal, setShowBookingModal] = useState(false);
 
+  // Auto-add selected service to cart when it's picked
+  useEffect(() => {
+    if (selectedService && !bookingCart.includes(selectedService.id)) {
+      setBookingCart([selectedService.id]);
+      setShowBookingModal(true);
+    }
+  }, [selectedService]);
+
   // Clear selected service when navigating to a different main view, 
   // unless we are in 'explore' which owns the profile view.
   useEffect(() => {

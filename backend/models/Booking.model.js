@@ -41,6 +41,10 @@ const bookingSchema = new mongoose.Schema(
             type: String,
             default: "KES",
         },
+        notes: {
+            type: String,
+            default: null,
+        },
         serviceTitleSnapshot: {
             type: String,
             default: null,

@@ -604,18 +604,27 @@ const createBookingsForTransaction = async (transaction) => {
 
             const now = new Date();
             const holdUntil = new Date(now.getTime() + holdHours * 60 * 60 * 1000);
+            
+            let order = null;
+            if (orderId) {
+                order = await Order.findById(orderId).lean();
+            }
+
+            const bookingDate = order?.metadata?.date ? new Date(order.metadata.date) : now;
+            const bookingNotes = order?.metadata?.notes || null;
 
             const bookingDocs = services.map((service) => ({
                 service: service._id,
                 order: orderId,
                 consumer: transaction.user,
                 provider: service.provider,
-                date: new Date(),
+                date: bookingDate,
                 price: service.price,
                 currency: "KES",
+                notes: bookingNotes,
                 serviceTitleSnapshot: service.title,
                 unitPriceSnapshot: service.price,
-                requestedAt: new Date(),
+                requestedAt: now,
                 statusHistory: [
                     {
                         from: null,
@@ -623,7 +632,7 @@ const createBookingsForTransaction = async (transaction) => {
                         actor: transaction.user,
                         actorRole: "CONSUMER",
                         reason: "Payment confirmed and booking created",
-                        at: new Date(),
+                        at: now,
                     },
                 ],
             }));
@@ -765,7 +774,7 @@ export const initiateMpesaStkPush = async (req, res) => {
         return res.status(401).json({ message: "Not authorized, user missing" });
     }
 
-    const { phoneNumber, serviceIds } = req.body;
+    const { phoneNumber, serviceIds, date, notes } = req.body;
     const normalizedPhone = normalizePhoneNumber(phoneNumber);
 
     if (!normalizedPhone) {
@@ -897,6 +906,8 @@ export const initiateMpesaStkPush = async (req, res) => {
             metadata: {
                 accountReference: reference,
                 phoneNumber: normalizedPhone,
+                date: date || null,
+                notes: notes || null,
             },
         });
 
