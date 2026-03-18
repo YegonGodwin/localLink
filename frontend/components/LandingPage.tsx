@@ -118,41 +118,51 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onAuthAction }) => {
       </section>
 
       {/* Testimonials */}
-      <section className="py-24 bg-slate-900/30 border-y border-white/5">
-        <div className="max-w-7xl mx-auto px-6">
+      <section className="py-24 bg-slate-900/30 border-y border-white/5 relative overflow-hidden">
+        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_50%,rgba(37,99,235,0.05),transparent_70%)]"></div>
+        <div className="max-w-7xl mx-auto px-6 relative z-10">
            <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold text-white mb-4">Trusted by Your Neighbors</h2>
-            <p className="text-slate-400">See what people are saying about their experiences with LocalLink professionals.</p>
+            <h2 className="text-4xl font-black text-white mb-4 tracking-tight">Voices of the Community</h2>
+            <p className="text-slate-400 text-lg max-w-2xl mx-auto font-medium">From Nairobi to Mombasa, see how LocalLink is transforming lives across the 254.</p>
           </div>
 
           <div className="grid md:grid-cols-3 gap-8">
             {[
-              { 
-                text: "I found a great plumber in minutes! The whole process was seamless, from booking to payment. Highly recommended for any homeowner.",
-                name: "John D.",
-                role: "Homeowner",
-                img: "https://randomuser.me/api/portraits/men/32.jpg"
-              },
-              { 
-                text: "LocalLink helped me double my client base in just three months. The platform is intuitive and brings serious customers directly to me.",
-                name: "Maria S.",
-                role: "Landscaper",
-                img: "https://randomuser.me/api/portraits/women/44.jpg"
-              },
-              { 
-                text: "As a freelance designer, managing clients and payments was a hassle. Now, everything is in one place. It's a game-changer for my business!",
-                name: "Chloe R.",
-                role: "Graphic Designer",
-                img: "https://randomuser.me/api/portraits/women/68.jpg"
-              }
+               { 
+                  text: "Finding a reliable 'fundi' in Nairobi used to be a headache. With LocalLink, I found a pro plumber in Westlands within minutes. Pure efficiency!",
+                  name: "Kamau Njoroge",
+                  role: "Homeowner, Westlands",
+                  img: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?fit=crop&w=150&h=150"
+               },
+               { 
+                  text: "Biashara imegrow sana! Since I joined as a landscaper, my bookings are constant. It's the best platform for any serious Kenyan service provider.",
+                  name: "Achieng' Onyango",
+                  role: "Professional Landscaper",
+                  img: "https://images.unsplash.com/photo-1531123897727-8f129e1688ce?fit=crop&w=150&h=150"
+               },
+               { 
+                  text: "As a freelance designer in Kisumu, getting paid securely was always a hustle. LocalLink's escrow system has changed the game for me. Highly recommended!",
+                  name: "Brian Otieno",
+                  role: "Digital Designer",
+                  img: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?fit=crop&w=150&h=150"
+               }
             ].map((t, i) => (
-              <div key={i} className="bg-slate-900 border border-slate-800 p-8 rounded-2xl">
-                <p className="text-slate-300 mb-6 italic">"{t.text}"</p>
-                <div className="flex items-center gap-4">
-                  <img src={t.img} alt={t.name} className="w-12 h-12 rounded-full border border-slate-700" />
+              <div key={i} className="group bg-slate-900/50 border border-slate-800/80 p-10 rounded-[2.5rem] hover:border-blue-500/30 transition-all duration-500 hover:shadow-2xl hover:shadow-blue-900/10 backdrop-blur-sm relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-blue-600/5 rounded-full blur-2xl -mr-12 -mt-12 group-hover:bg-blue-600/10 transition-all"></div>
+                <div className="flex gap-1 mb-6 text-amber-400">
+                  {[...Array(5)].map((_, i) => <CheckCircle key={i} size={14} className="fill-current" />)}
+                </div>
+                <p className="text-slate-300 mb-8 text-lg font-medium leading-relaxed italic">"{t.text}"</p>
+                <div className="flex items-center gap-5 border-t border-slate-800/50 pt-6">
+                  <div className="relative">
+                    <img src={t.img} alt={t.name} className="w-14 h-14 rounded-2xl object-cover border-2 border-slate-800 group-hover:border-blue-500/50 transition-colors" />
+                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-blue-600 rounded-full border-2 border-slate-900 flex items-center justify-center">
+                      <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
+                    </div>
+                  </div>
                   <div>
-                    <h4 className="font-bold text-white">{t.name}</h4>
-                    <p className="text-sm text-slate-500">{t.role}</p>
+                    <h4 className="font-black text-white text-lg tracking-tight">{t.name}</h4>
+                    <p className="text-xs font-bold text-blue-500 uppercase tracking-widest mt-0.5">{t.role}</p>
                   </div>
                 </div>
               </div>
