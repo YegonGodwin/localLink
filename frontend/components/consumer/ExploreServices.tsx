@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Service, User } from '../../types';
-import { Button, cn } from '../Layout';
-import { Search, MapPin, Filter, ChevronDown, Heart, Star, MessageSquare, Loader2 } from 'lucide-react';
+import { Button, cn, Modal, Badge } from '../Layout';
+import { Search, MapPin, Filter, ChevronDown, Heart, Star, MessageSquare, Loader2, ArrowRight, ExternalLink } from 'lucide-react';
 
 interface ExploreServicesProps {
    user?: User;
@@ -16,20 +16,147 @@ interface ProviderGroup {
    services: Service[];
 }
 
-interface ProviderCard extends ProviderGroup {
+interface ProviderCardProps extends ProviderGroup {
    featuredService?: Service;
    minPrice: number;
    uniqueCategories: string[];
+   isLiked: boolean;
+   isLikeLoading: boolean;
+   likesCount: number;
+   onLike: (providerId: string) => void;
+   onMessage: (providerId: string) => void;
+   onViewServices: (provider: ProviderGroup) => void;
+   userRole?: string;
 }
+
+const ProviderCardComponent: React.FC<ProviderCardProps> = ({
+   providerId,
+   providerName,
+   providerAvatar,
+   services,
+   featuredService,
+   minPrice,
+   uniqueCategories,
+   isLiked,
+   isLikeLoading,
+   likesCount,
+   onLike,
+   onMessage,
+   onViewServices,
+   userRole
+}) => {
+   return (
+      <div className="group bg-slate-900/50 border border-slate-800 rounded-2xl overflow-hidden hover:border-blue-500/50 transition-all duration-300 hover:shadow-2xl hover:shadow-blue-900/10 flex flex-col h-full">
+         {/* Image Section */}
+         <div className="relative h-52 overflow-hidden">
+            <img 
+               src={featuredService?.image || 'https://images.unsplash.com/photo-1581578731522-99c5f6087516?auto=format&fit=crop&q=80&w=800'} 
+               alt={featuredService?.title} 
+               className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" 
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent opacity-60"></div>
+            
+            <div className="absolute top-4 right-4">
+               <button
+                  className={cn(
+                     "p-2.5 backdrop-blur-md rounded-full transition-all duration-300 transform active:scale-90",
+                     isLiked ? "bg-rose-600 text-white shadow-lg shadow-rose-900/20" : "bg-slate-950/40 text-white hover:bg-slate-950/60 border border-white/10"
+                  )}
+                  onClick={(e) => {
+                     e.stopPropagation();
+                     onLike(providerId);
+                  }}
+                  disabled={userRole !== 'CONSUMER' || isLikeLoading}
+               >
+                  <Heart size={18} fill={isLiked ? 'currentColor' : 'none'} className={cn(isLikeLoading && "animate-pulse")} />
+               </button>
+            </div>
+            
+            <div className="absolute bottom-4 left-4 flex flex-wrap gap-2">
+               {uniqueCategories.slice(0, 2).map(cat => (
+                  <span key={cat} className="px-2.5 py-1 bg-blue-600/90 backdrop-blur-md text-white text-[10px] font-bold uppercase tracking-wider rounded-md">
+                     {cat}
+                  </span>
+               ))}
+            </div>
+         </div>
+
+         {/* Content Section */}
+         <div className="p-6 flex flex-col flex-1">
+            <div className="flex justify-between items-start mb-4">
+               <div className="flex-1 min-w-0">
+                  <h3 className="font-bold text-xl text-white mb-1 truncate group-hover:text-blue-400 transition-colors">
+                     {providerName}
+                  </h3>
+                  <div className="flex items-center gap-1.5 text-slate-400 text-sm">
+                     <MapPin size={14} className="text-slate-500" />
+                     <span>Nairobi, Kenya</span>
+                     <span className="w-1 h-1 bg-slate-700 rounded-full mx-1"></span>
+                     <span>2.4 km</span>
+                  </div>
+               </div>
+               <div className="relative">
+                  <img 
+                     src={providerAvatar} 
+                     alt={providerName} 
+                     className="w-12 h-12 rounded-xl object-cover border-2 border-slate-800 shadow-xl group-hover:border-blue-500/50 transition-colors" 
+                  />
+                  <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-slate-900 rounded-full"></div>
+               </div>
+            </div>
+
+            <div className="flex items-center gap-4 mb-6">
+               <div className="flex items-center gap-1">
+                  <Star size={16} className="text-amber-400 fill-amber-400" />
+                  <span className="font-bold text-white">{featuredService?.rating || 0}</span>
+                  <span className="text-slate-500 text-xs">({featuredService?.reviews || 0})</span>
+               </div>
+               <div className="h-4 w-px bg-slate-800"></div>
+               <div className="flex items-center gap-1">
+                  <Heart size={14} className="text-slate-500" />
+                  <span className="text-slate-400 text-xs font-medium">{likesCount} likes</span>
+               </div>
+            </div>
+
+            <div className="mt-auto space-y-4">
+               <div className="flex items-center justify-between py-3 border-y border-slate-800/50">
+                  <span className="text-slate-400 text-sm">Starts from</span>
+                  <span className="text-white font-bold text-lg">Ksh {minPrice.toLocaleString()}</span>
+               </div>
+
+               <div className="grid grid-cols-2 gap-3">
+                  <Button
+                     variant="secondary"
+                     className="py-2.5 text-xs font-bold uppercase tracking-wider bg-slate-800/50 border-slate-700/50 hover:bg-slate-800 hover:border-slate-600 group/btn"
+                     onClick={() => onMessage(providerId)}
+                  >
+                     <MessageSquare size={14} className="mr-2 group-hover/btn:scale-110 transition-transform" /> 
+                     Chat
+                  </Button>
+                  <Button
+                     variant="primary"
+                     className="py-2.5 text-xs font-bold uppercase tracking-wider shadow-lg shadow-blue-900/20 group/btn"
+                     onClick={() => onViewServices({ providerId, providerName, providerAvatar, services })}
+                  >
+                     Services
+                     <ArrowRight size={14} className="ml-2 group-hover/btn:translate-x-1 transition-transform" />
+                  </Button>
+               </div>
+            </div>
+         </div>
+      </div>
+   );
+};
 
 export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelectService, onMessageProvider }) => {
    const [services, setServices] = useState<Service[]>([]);
    const [loading, setLoading] = useState(true);
    const [searchQuery, setSearchQuery] = useState('');
-   const [location, setLocation] = useState(user?.location || 'New York, NY');
+   const [location, setLocation] = useState(user?.location || 'Nairobi, Kenya');
    const [isLocating, setIsLocating] = useState(false);
-   const [expandedProviderId, setExpandedProviderId] = useState<string | null>(null);
+   const [selectedProvider, setSelectedProvider] = useState<ProviderGroup | null>(null);
    const [providerLikes, setProviderLikes] = useState<Record<string, { liked: boolean; likesCount: number; loading: boolean }>>({});
+   const [selectedCategory, setSelectedCategory] = useState('All');
 
    const fetchServices = async () => {
       try {
@@ -37,7 +164,6 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
          const res = await fetch('/api/services');
          const data = await res.json();
          if (res.ok) {
-            // Map backend structure to frontend Service interface
             const mappedServices = data.map((s: any) => ({
                id: s._id,
                providerId: s.provider?._id || '',
@@ -66,55 +192,30 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
 
    useEffect(() => {
       const loadProviderLikeStatuses = async () => {
-         if (user?.role !== 'CONSUMER') {
-            return;
-         }
+         if (user?.role !== 'CONSUMER' || services.length === 0) return;
 
          const token = localStorage.getItem('token');
-         if (!token) {
-            return;
-         }
+         if (!token) return;
 
-         const providerIds = Array.from(
-            new Set(
-               services
-                  .map((s) => s.providerId)
-                  .filter((providerId): providerId is string => typeof providerId === 'string' && providerId.length > 0)
-            )
-         );
-         if (providerIds.length === 0) {
-            return;
-         }
-
+         const providerIds = Array.from(new Set(services.map(s => s.providerId).filter(id => id)));
+         
          try {
-            const results: Array<{ providerId: string; liked: boolean; likesCount: number }> = await Promise.all(
-               providerIds.map(async (providerId: string) => {
+            const results = await Promise.all(
+               providerIds.map(async (providerId) => {
                   const res = await fetch(`/api/users/providers/${providerId}/like-status`, {
                      headers: { Authorization: `Bearer ${token}` },
                   });
+                  if (!res.ok) return { providerId, liked: false, likesCount: 0 };
                   const data = await res.json();
-                  if (!res.ok) {
-                     return { providerId, liked: false, likesCount: 0 };
-                  }
-                  return {
-                     providerId,
-                     liked: Boolean(data.liked),
-                     likesCount: Number(data.likesCount || 0),
-                  };
+                  return { providerId, liked: !!data.liked, likesCount: data.likesCount || 0 };
                })
             );
 
-            setProviderLikes((prev) => {
-               const next = { ...prev };
-               results.forEach((item) => {
-                  next[item.providerId] = {
-                     liked: item.liked,
-                     likesCount: item.likesCount,
-                     loading: false,
-                  };
-               });
-               return next;
+            const nextLikes: any = {};
+            results.forEach(r => {
+               nextLikes[r.providerId] = { liked: r.liked, likesCount: r.likesCount, loading: false };
             });
+            setProviderLikes(nextLikes);
          } catch (error) {
             console.error('Error loading provider likes:', error);
          }
@@ -123,82 +224,36 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
       loadProviderLikeStatuses();
    }, [services, user?.role]);
 
-   useEffect(() => {
-      const handleReviewCreated = async (event: Event) => {
-         const customEvent = event as CustomEvent<{ serviceId?: string }>;
-         const serviceId = customEvent.detail?.serviceId;
-         if (!serviceId) {
-            return;
+   const handleToggleProviderLike = async (providerId: string) => {
+      if (user?.role !== 'CONSUMER') return;
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      setProviderLikes(prev => ({
+         ...prev,
+         [providerId]: { ...prev[providerId], loading: true }
+      }));
+
+      try {
+         const res = await fetch(`/api/users/providers/${providerId}/like`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+         });
+         const data = await res.json();
+         if (res.ok) {
+            setProviderLikes(prev => ({
+               ...prev,
+               [providerId]: { liked: !!data.liked, likesCount: data.likesCount, loading: false }
+            }));
          }
-
-         try {
-            const res = await fetch(`/api/services/${serviceId}`);
-            const data = await res.json();
-            if (!res.ok) {
-               return;
-            }
-
-            setServices((prev) =>
-               prev.map((service) =>
-                  service.id === serviceId
-                     ? {
-                        ...service,
-                        rating: data.rating ?? service.rating,
-                        reviews: data.reviews ?? service.reviews,
-                     }
-                     : service
-               )
-            );
-         } catch (error) {
-            console.error('Error refreshing service rating after review:', error);
-         }
-      };
-
-      window.addEventListener('review:created', handleReviewCreated as EventListener);
-      return () => {
-         window.removeEventListener('review:created', handleReviewCreated as EventListener);
-      };
-   }, []);
-
-   useEffect(() => {
-      const fetchLocation = async () => {
-         if (navigator.geolocation) {
-            setIsLocating(true);
-            navigator.geolocation.getCurrentPosition(
-               async (position) => {
-                  try {
-                     const { latitude, longitude } = position.coords;
-                     const response = await fetch(
-                        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}`
-                     );
-                     const data = await response.json();
-                     if (data.address) {
-                        const city = data.address.city || data.address.town || data.address.village || data.address.suburb || data.address.county;
-                        const state = data.address.state || data.address.region;
-                        const formattedAddress = city && state ? `${city}, ${state}` : data.display_name.split(',')[0] + ', ' + (data.address.country || '');
-                        setLocation(formattedAddress);
-                     }
-                  } catch (error) {
-                     console.error("Error fetching location:", error);
-                  } finally {
-                     setIsLocating(false);
-                  }
-               },
-               (error) => {
-                  console.error("Error getting geolocation:", error);
-                  setIsLocating(false);
-               }
-            );
-         }
-      };
-
-      // Only fetch if location is default or missing
-      if (!user?.location || user.location === 'New York, NY') {
-         fetchLocation();
+      } catch (error) {
+         console.error('Error toggling like:', error);
+         setProviderLikes(prev => ({
+            ...prev,
+            [providerId]: { ...prev[providerId], loading: false }
+         }));
       }
-   }, [user?.location]);
-
-   const [selectedCategory, setSelectedCategory] = useState('All');
+   };
 
    const filteredServices = services.filter(s => {
       const matchesSearch = s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -207,8 +262,8 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
       return matchesSearch && matchesCategory;
    });
 
-   const providers = filteredServices.reduce<Record<string, ProviderGroup>>((acc, service) => {
-      const providerId = service.providerId || `unknown-${service.id}`;
+   const providersMap = filteredServices.reduce<Record<string, ProviderGroup>>((acc, service) => {
+      const providerId = service.providerId;
       if (!acc[providerId]) {
          acc[providerId] = {
             providerId,
@@ -221,239 +276,186 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
       return acc;
    }, {});
 
-   const providerValues = Object.values(providers) as ProviderGroup[];
-   const providerCards: ProviderCard[] = providerValues.map((provider) => {
+   const providerCards = Object.values(providersMap).map(provider => {
+      const minPrice = Math.min(...provider.services.map(s => s.price));
+      const uniqueCategories = Array.from(new Set(provider.services.map(s => s.category)));
       const featuredService = provider.services[0];
-      const minPrice = provider.services.reduce((min, s) => Math.min(min, s.price), provider.services[0]?.price || 0);
-      const uniqueCategories = Array.from(new Set(provider.services.map(s => s.category))).slice(0, 3);
-      return { ...provider, featuredService, minPrice, uniqueCategories };
+      return { ...provider, minPrice, uniqueCategories, featuredService };
    });
 
-   const handleToggleProviderLike = async (providerId: string) => {
-      if (user?.role !== 'CONSUMER') {
-         return;
-      }
-
-      const token = localStorage.getItem('token');
-      if (!token) {
-         return;
-      }
-
-      setProviderLikes((prev) => ({
-         ...prev,
-         [providerId]: {
-            liked: prev[providerId]?.liked || false,
-            likesCount: prev[providerId]?.likesCount || 0,
-            loading: true,
-         },
-      }));
-
-      try {
-         const res = await fetch(`/api/users/providers/${providerId}/like`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
-         });
-         const data = await res.json();
-         if (!res.ok) {
-            throw new Error(data?.message || 'Unable to update like');
-         }
-
-         setProviderLikes((prev) => ({
-            ...prev,
-            [providerId]: {
-               liked: Boolean(data.liked),
-               likesCount: Number(data.likesCount || 0),
-               loading: false,
-            },
-         }));
-      } catch (error) {
-         console.error('Error toggling provider like:', error);
-         setProviderLikes((prev) => ({
-            ...prev,
-            [providerId]: {
-               liked: prev[providerId]?.liked || false,
-               likesCount: prev[providerId]?.likesCount || 0,
-               loading: false,
-            },
-         }));
-      }
-   };
-
    return (
-      <div className="space-y-8">
-         {/* Header */}
-         <div>
-            <h1 className="text-3xl font-bold text-white mb-2">Explore Services</h1>
-            <p className="text-slate-400">Discover top-rated professionals in your area for any task.</p>
+      <div className="space-y-10 pb-20">
+         {/* Hero Section */}
+         <div className="relative rounded-3xl overflow-hidden bg-slate-900 border border-slate-800 p-8 md:p-12 shadow-2xl">
+            <div className="absolute top-0 right-0 w-1/3 h-full bg-gradient-to-l from-blue-600/10 to-transparent pointer-events-none"></div>
+            <div className="relative z-10 max-w-2xl">
+               <Badge variant="info" className="mb-4 uppercase tracking-widest font-bold px-4 py-1.5">Marketplace</Badge>
+               <h1 className="text-4xl md:text-5xl font-extrabold text-white mb-4 tracking-tight">
+                  Find the <span className="text-blue-500">Perfect Professional</span> for Your Needs
+               </h1>
+               <p className="text-slate-400 text-lg mb-8 leading-relaxed">
+                  Connect with trusted experts, read verified reviews, and book services instantly in your neighborhood.
+               </p>
+
+               {/* Integrated Search Bar */}
+               <div className="flex flex-col md:flex-row bg-slate-950 border border-slate-800 rounded-2xl p-2 shadow-2xl">
+                  <div className="flex-1 flex items-center px-4 border-b md:border-b-0 md:border-r border-slate-800 py-2">
+                     <Search className="text-blue-500 mr-3" size={22} />
+                     <input
+                        type="text"
+                        placeholder="What service do you need?"
+                        className="w-full bg-transparent border-none focus:ring-0 text-white placeholder-slate-500 py-3 outline-none font-medium"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                     />
+                  </div>
+                  <div className="flex-1 flex items-center px-4 py-2">
+                     <MapPin className={cn("text-slate-500 mr-3", isLocating && "animate-pulse text-blue-500")} size={22} />
+                     <input
+                        type="text"
+                        placeholder="Location"
+                        className="w-full bg-transparent border-none focus:ring-0 text-white placeholder-slate-500 py-3 outline-none font-medium"
+                        value={location}
+                        onChange={(e) => setLocation(e.target.value)}
+                     />
+                  </div>
+                  <Button className="h-auto rounded-xl px-10 py-4 font-bold text-base shadow-lg shadow-blue-600/20">
+                     Search
+                  </Button>
+               </div>
+            </div>
          </div>
 
-         {/* Search Bar */}
-         <div className="flex bg-slate-900 border border-slate-800 rounded-xl p-1 shadow-lg">
-            <div className="flex-1 flex items-center px-4 border-r border-slate-800">
-               <Search className="text-slate-500 mr-3" size={20} />
-               <input
-                  type="text"
-                  placeholder="What service are you looking for? (e.g., plumber, cleaning)"
-                  className="w-full bg-transparent border-none focus:ring-0 text-white placeholder-slate-500 py-3 outline-none"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-               />
-            </div>
-            <div className="flex-1 flex items-center px-4">
-               <MapPin className={cn("text-slate-500 mr-3", isLocating && "animate-pulse text-blue-500")} size={20} />
-               <input
-                  type="text"
-                  placeholder="Location"
-                  className="w-full bg-transparent border-none focus:ring-0 text-white placeholder-slate-500 py-3 outline-none"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-               />
-            </div>
-            <Button className="h-auto rounded-lg px-8">Search</Button>
-         </div>
-
-         {/* Horizontal Filters */}
-         <div className="flex items-center gap-4">
-            <button className="flex items-center gap-2 px-4 py-2 bg-slate-900 border border-slate-800 rounded-lg text-slate-300 hover:text-white hover:border-slate-600 transition-colors">
-               <Filter size={16} /> Filters
-            </button>
-            <div className="h-6 w-px bg-slate-800"></div>
-            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide flex-1">
-               {['All', 'Plumbing', 'Cleaning', 'Electrical', 'Gardening', 'Moving'].map((cat) => (
+         {/* Filter Section */}
+         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 sticky top-0 z-20 bg-slate-950/80 backdrop-blur-md py-4 border-b border-slate-900 -mx-8 px-8">
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+               {['All', 'Plumbing', 'Cleaning', 'Electrical', 'Gardening', 'Moving', 'Painting'].map((cat) => (
                   <button
                      key={cat}
                      onClick={() => setSelectedCategory(cat)}
                      className={cn(
-                        "px-4 py-2 rounded-full border text-sm whitespace-nowrap transition-colors",
-                        selectedCategory === cat ? "bg-slate-800 text-white border-slate-700 font-medium" : "bg-transparent border-slate-800 text-slate-400 hover:border-slate-600 hover:text-slate-200"
+                        "px-6 py-2.5 rounded-xl border text-sm font-bold whitespace-nowrap transition-all duration-300",
+                        selectedCategory === cat 
+                           ? "bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-900/30" 
+                           : "bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-600 hover:text-slate-200"
                      )}
                   >
                      {cat}
                   </button>
                ))}
             </div>
-         </div>
-
-         {/* Main Content: Count & Sorting */}
-         <div className="flex justify-between items-center text-sm">
-            <span className="text-slate-400">Showing <span className="text-white font-bold">{providerCards.length}</span> of <span className="text-white font-bold">{providerCards.length}</span> providers</span>
-            <div className="flex items-center gap-2">
-               <button className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-slate-300">
-                  Recommended <ChevronDown size={14} />
+            
+            <div className="flex items-center gap-4">
+               <span className="text-slate-500 text-sm font-medium">
+                  Sorted by: <span className="text-white">Recommended</span>
+               </span>
+               <button className="p-2.5 bg-slate-900 border border-slate-800 rounded-xl text-slate-400 hover:text-white transition-colors">
+                  <Filter size={18} />
                </button>
             </div>
          </div>
 
+         {/* Results Header */}
+         <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-bold text-white flex items-center gap-3">
+               Available Providers
+               <span className="px-2.5 py-0.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-400 font-mono">
+                  {providerCards.length}
+               </span>
+            </h2>
+         </div>
+
          {/* Provider Cards Grid */}
-         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-6">
+         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {loading ? (
-               <div className="col-span-full py-20 flex flex-col items-center justify-center text-slate-500 gap-4">
-                  <Loader2 size={40} className="animate-spin text-blue-500" />
-                  <p>Finding top-rated services...</p>
-               </div>
+               Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="bg-slate-900 border border-slate-800 rounded-2xl h-[450px] animate-pulse"></div>
+               ))
             ) : providerCards.length === 0 ? (
-               <div className="col-span-full py-20 bg-slate-900 border border-slate-800 rounded-2xl flex flex-col items-center justify-center text-center p-8">
-                  <Search size={48} className="text-slate-700 mb-4" />
-                  <h3 className="text-xl font-bold text-white mb-2">No results found</h3>
-                  <p className="text-slate-400 max-w-sm">Try adjusting your filters or searching for something else.</p>
+               <div className="col-span-full py-32 bg-slate-900/50 border border-slate-800 border-dashed rounded-3xl flex flex-col items-center justify-center text-center p-8">
+                  <div className="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center mb-6">
+                     <Search size={32} className="text-slate-600" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-white mb-2">No matching providers</h3>
+                  <p className="text-slate-400 max-w-sm mb-8">We couldn't find any professionals matching your current filters. Try broadening your search.</p>
+                  <Button variant="secondary" onClick={() => { setSearchQuery(''); setSelectedCategory('All'); }}>
+                     Clear all filters
+                  </Button>
                </div>
             ) : providerCards.map((provider) => (
-               <div key={provider.providerId} className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden hover:border-slate-700 transition-all group relative">
-                  {(() => {
-                     const likeState = providerLikes[provider.providerId];
-                     const isLiked = Boolean(likeState?.liked);
-                     const isLikeLoading = Boolean(likeState?.loading);
-                     const likesCount = Number(likeState?.likesCount || 0);
-                     return (
-                        <>
-                  {/* Image Section */}
-                  <div className="h-48 relative overflow-hidden">
-                     <img src={provider.featuredService?.image} alt={provider.featuredService?.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                     <div className="absolute top-3 right-3">
-                        <button
-                           className={cn(
-                              "p-2 backdrop-blur-md rounded-full transition-colors",
-                              isLiked ? "bg-rose-600/80 text-white hover:bg-rose-600" : "bg-slate-950/50 text-white hover:bg-slate-950"
-                           )}
-                           onClick={() => handleToggleProviderLike(provider.providerId)}
-                           disabled={user?.role !== 'CONSUMER' || isLikeLoading}
-                           title={isLiked ? 'Unlike provider' : 'Like provider'}
-                        >
-                           <Heart size={16} fill={isLiked ? 'currentColor' : 'none'} />
-                        </button>
-                     </div>
-                     <div className="absolute bottom-3 left-3 bg-slate-950/80 backdrop-blur-md px-2 py-1 rounded text-xs font-bold text-white">
-                        From Ksh {provider.minPrice}
-                     </div>
-                  </div>
-
-                  {/* Content Section */}
-                  <div className="p-5">
-                     <div className="flex justify-between items-start mb-2">
-                        <div>
-                           <h3 className="font-bold text-lg text-white mb-1">{provider.providerName}</h3>
-                           <p className="text-sm text-slate-400 flex items-center gap-1.5">
-                              {provider.uniqueCategories.join(', ')} <span className="w-1 h-1 bg-slate-600 rounded-full"></span> 2.5km away
-                           </p>
-                        </div>
-                        <img src={provider.providerAvatar} alt={provider.providerName} className="w-10 h-10 rounded-full border-2 border-slate-800" />
-                     </div>
-
-                     <div className="flex gap-2">
-                        <Button
-                           variant="secondary"
-                           className="flex-1 py-2 text-xs bg-slate-800/50 hover:bg-slate-800"
-                           onClick={() => onMessageProvider(provider.providerId)}
-                        >
-                           <MessageSquare size={14} className="mr-2" /> Message
-                        </Button>
-                        <Button
-                           variant="primary"
-                           className="flex-1 py-2 text-xs"
-                           onClick={() => setExpandedProviderId(prev => prev === provider.providerId ? null : provider.providerId)}
-                        >
-                           {expandedProviderId === provider.providerId ? 'Hide Services' : 'View Services'}
-                        </Button>
-                     </div>
-
-                     <div className="border-t border-slate-800 mt-4 pt-4 flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                           <Star size={16} className="text-yellow-400 fill-yellow-400" />
-                           <span className="font-bold text-white">{provider.featuredService?.rating || 0}</span>
-                           <span className="text-slate-500 text-sm">({provider.featuredService?.reviews || 0})</span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                           <span className="text-xs text-slate-500">{likesCount} like{likesCount === 1 ? '' : 's'}</span>
-                           <span className="text-xs text-slate-500">{provider.services.length} service{provider.services.length === 1 ? '' : 's'}</span>
-                        </div>
-                     </div>
-
-                     {expandedProviderId === provider.providerId && (
-                        <div className="mt-4 space-y-3 border-t border-slate-800 pt-4">
-                           {provider.services.map(service => (
-                              <div key={service.id} className="flex items-center justify-between gap-3 bg-slate-950/40 border border-slate-800 rounded-lg p-3">
-                                 <div className="flex-1">
-                                    <p className="text-sm font-semibold text-white">{service.title}</p>
-                                    <p className="text-xs text-slate-500">{service.category} · Ksh {service.price}</p>
-                                 </div>
-                                 <Button
-                                    variant="secondary"
-                                    className="text-xs px-4 bg-blue-600/10 text-blue-400 border-blue-600/20 hover:bg-blue-600 hover:text-white"
-                                    onClick={() => onSelectService(service)}
-                                 >
-                                    Book Now
-                                 </Button>
-                              </div>
-                           ))}
-                        </div>
-                     )}
-                  </div>
-                        </>
-                     );
-                  })()}
-               </div>
+               <ProviderCardComponent
+                  key={provider.providerId}
+                  {...provider}
+                  isLiked={providerLikes[provider.providerId]?.liked || false}
+                  isLikeLoading={providerLikes[provider.providerId]?.loading || false}
+                  likesCount={providerLikes[provider.providerId]?.likesCount || 0}
+                  onLike={handleToggleProviderLike}
+                  onMessage={onMessageProvider}
+                  onViewServices={(p) => setSelectedProvider(p)}
+                  userRole={user?.role}
+               />
             ))}
          </div>
+
+         {/* Services Modal */}
+         <Modal
+            isOpen={!!selectedProvider}
+            onClose={() => setSelectedProvider(null)}
+            title={`Services by ${selectedProvider?.providerName}`}
+         >
+            <div className="space-y-6 max-h-[70vh] pr-2">
+               <div className="flex items-center gap-4 p-4 bg-blue-600/10 border border-blue-500/20 rounded-xl mb-4">
+                  <img src={selectedProvider?.providerAvatar} className="w-12 h-12 rounded-full border-2 border-blue-500/30" alt="" />
+                  <div>
+                     <p className="text-white font-bold">{selectedProvider?.providerName}</p>
+                     <p className="text-xs text-blue-400">Verified Professional</p>
+                  </div>
+                  <div className="ml-auto flex items-center gap-1.5 px-3 py-1 bg-slate-950/50 rounded-lg">
+                     <Star size={14} className="text-amber-400 fill-amber-400" />
+                     <span className="text-sm font-bold text-white">4.9</span>
+                  </div>
+               </div>
+
+               <div className="space-y-3">
+                  {selectedProvider?.services.map(service => (
+                     <div key={service.id} className="group flex items-center justify-between gap-4 bg-slate-950/60 border border-slate-800/80 hover:border-blue-500/30 rounded-2xl p-5 transition-all duration-300">
+                        <div className="flex-1 min-w-0">
+                           <div className="flex items-center gap-2 mb-1">
+                              <h4 className="text-lg font-bold text-white truncate">{service.title}</h4>
+                              <Badge variant="outline" className="text-[10px] py-0">{service.category}</Badge>
+                           </div>
+                           <p className="text-sm text-slate-400 line-clamp-1 mb-2">{service.description}</p>
+                           <div className="text-blue-500 font-bold text-lg flex items-center gap-1">
+                              <span className="text-xs text-slate-500 font-normal">Starting at</span>
+                              Ksh {service.price.toLocaleString()}
+                           </div>
+                        </div>
+                        <Button
+                           className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-sm font-bold shadow-lg shadow-blue-600/20"
+                           onClick={() => {
+                              onSelectService(service);
+                              setSelectedProvider(null);
+                           }}
+                        >
+                           Book
+                        </Button>
+                     </div>
+                  ))}
+               </div>
+
+               <div className="pt-4 flex justify-center">
+                  <button 
+                     className="text-slate-500 hover:text-blue-400 text-sm flex items-center gap-2 transition-colors font-medium"
+                     onClick={() => {
+                        // Logic to go to full profile
+                        setSelectedProvider(null);
+                     }}
+                  >
+                     View full provider profile <ExternalLink size={14} />
+                  </button>
+               </div>
+            </div>
+         </Modal>
       </div>
    );
 };
