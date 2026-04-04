@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Service, User } from '../../types';
 import { Button, cn, Modal, Badge } from '../Layout';
-import { Search, MapPin, Filter, ChevronDown, Heart, Star, MessageSquare, Loader2, ArrowRight, ExternalLink } from 'lucide-react';
+import { Search, MapPin, Filter, Heart, Star, MessageSquare, ArrowRight, ExternalLink } from 'lucide-react';
 
 interface ExploreServicesProps {
    user?: User;
@@ -197,11 +197,11 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
          const token = localStorage.getItem('token');
          if (!token) return;
 
-         const providerIds = Array.from(new Set(services.map(s => s.providerId).filter(id => id)));
+         const providerIds = Array.from(new Set(services.map(s => s.providerId).filter(Boolean)));
          
          try {
-            const results = await Promise.all(
-               providerIds.map(async (providerId) => {
+            const results: { providerId: string; liked: boolean; likesCount: number }[] = await Promise.all(
+               providerIds.map(async (providerId: string) => {
                   const res = await fetch(`/api/users/providers/${providerId}/like-status`, {
                      headers: { Authorization: `Bearer ${token}` },
                   });
@@ -211,7 +211,7 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
                })
             );
 
-            const nextLikes: any = {};
+            const nextLikes: Record<string, { liked: boolean; likesCount: number; loading: boolean }> = {};
             results.forEach(r => {
                nextLikes[r.providerId] = { liked: r.liked, likesCount: r.likesCount, loading: false };
             });
@@ -276,7 +276,7 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
       return acc;
    }, {});
 
-   const providerCards = Object.values(providersMap).map(provider => {
+   const providerCards = Object.values(providersMap).map((provider: ProviderGroup) => {
       const minPrice = Math.min(...provider.services.map(s => s.price));
       const uniqueCategories = Array.from(new Set(provider.services.map(s => s.category)));
       const featuredService = provider.services[0];
@@ -358,8 +358,7 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
          {/* Results Header */}
          <div className="flex justify-between items-center">
             <h2 className="text-2xl font-bold text-white flex items-center gap-3">
-               Available Providers
-               <span className="px-2.5 py-0.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-400 font-mono">
+               Available Providers <span className="px-2.5 py-0.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-400 font-mono">
                   {providerCards.length}
                </span>
             </h2>
@@ -367,11 +366,12 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
 
          {/* Provider Cards Grid */}
          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {loading ? (
-               Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="bg-slate-900 border border-slate-800 rounded-2xl h-[450px] animate-pulse"></div>
+            {loading && (
+               ['skeleton-1', 'skeleton-2', 'skeleton-3', 'skeleton-4', 'skeleton-5', 'skeleton-6'].map((key) => (
+                  <div key={key} className="bg-slate-900 border border-slate-800 rounded-2xl h-[450px] animate-pulse"></div>
                ))
-            ) : providerCards.length === 0 ? (
+            )}
+            {!loading && providerCards.length === 0 && (
                <div className="col-span-full py-32 bg-slate-900/50 border border-slate-800 border-dashed rounded-3xl flex flex-col items-center justify-center text-center p-8">
                   <div className="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center mb-6">
                      <Search size={32} className="text-slate-600" />
@@ -382,7 +382,8 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
                      Clear all filters
                   </Button>
                </div>
-            ) : providerCards.map((provider) => (
+            )}
+            {!loading && providerCards.length > 0 && providerCards.map((provider) => (
                <ProviderCardComponent
                   key={provider.providerId}
                   {...provider}

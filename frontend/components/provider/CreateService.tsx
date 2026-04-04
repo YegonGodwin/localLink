@@ -145,6 +145,7 @@ export const CreateService: React.FC<CreateServiceProps> = ({ onCancel, onSucces
                   <option value="Electrical">Electrical</option>
                   <option value="Gardening">Gardening</option>
                   <option value="Tutoring">Tutoring</option>
+                  <option value="Photography">Photography</option>
                   <option value="IT services">IT services</option>
                   <option value="Digital marketing & Strategy">Digital Marketing & Strategy</option>
                   <option value="Web development & Programming">Web Development & Programming</option>

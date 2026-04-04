@@ -2,6 +2,44 @@ import User from "../models/User.model.js";
 import ProviderLike from "../models/ProviderLike.model.js";
 import generateToken from "../utils/generateToken.js";
 
+const KB = 1024;
+const MB = 1024 * KB;
+const MAX_PROFILE_MEDIA_BYTES = 8 * MB;
+const MAX_PORTFOLIO_ITEMS = 8;
+
+const getStoredStringSize = (value = "") => {
+    if (!value || typeof value !== "string") {
+        return 0;
+    }
+
+    if (!value.startsWith("data:")) {
+        return Buffer.byteLength(value, "utf8");
+    }
+
+    const base64 = value.split(",")[1] || "";
+    const padding = base64.match(/=*$/)?.[0].length ?? 0;
+    return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
+};
+
+const validateProfileMedia = ({ avatar, coverImage, portfolio }) => {
+    const normalizedPortfolio = Array.isArray(portfolio) ? portfolio : [];
+
+    if (normalizedPortfolio.length > MAX_PORTFOLIO_ITEMS) {
+        return `You can upload up to ${MAX_PORTFOLIO_ITEMS} portfolio images.`;
+    }
+
+    const totalBytes =
+        getStoredStringSize(avatar) +
+        getStoredStringSize(coverImage) +
+        normalizedPortfolio.reduce((total, item) => total + getStoredStringSize(item), 0);
+
+    if (totalBytes > MAX_PROFILE_MEDIA_BYTES) {
+        return "Your profile images are too large to save together. Use fewer portfolio images or smaller files.";
+    }
+
+    return null;
+};
+
 // @desc    Get user profile
 // @route   GET /api/users/profile
 // @access  Private
@@ -40,6 +78,18 @@ export const updateUserProfile = async (req, res) => {
     const user = await User.findById(req.user._id);
 
     if (user) {
+        const nextProfileMedia = {
+            avatar: typeof req.body.avatar === "string" ? req.body.avatar : user.avatar,
+            coverImage: typeof req.body.coverImage === "string" ? req.body.coverImage : user.coverImage,
+            portfolio: Array.isArray(req.body.portfolio) ? req.body.portfolio : user.portfolio,
+        };
+        const profileMediaError = validateProfileMedia(nextProfileMedia);
+
+        if (profileMediaError) {
+            res.status(400);
+            throw new Error(profileMediaError);
+        }
+
         user.name = req.body.name || user.name;
         user.email = req.body.email || user.email;
         user.avatar = req.body.avatar || user.avatar;

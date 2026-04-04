@@ -2,6 +2,10 @@ import React, { useState, useRef } from 'react';
 import { Card, Button, cn, Badge } from '../Layout';
 import { Service, User } from '../../types';
 import {
+  assertProfileMediaWithinLimit,
+  optimizeProfileImage
+} from '../../utils/profileImages';
+import {
   Camera, UploadCloud, MapPin, Globe, Mail, Phone,
   User as UserIcon, Briefcase, CheckCircle, Save, X,
   ExternalLink, ShieldCheck, CreditCard, ChevronRight
@@ -38,6 +42,11 @@ export const EditProfile: React.FC<EditProfileProps> = ({ user, onPreview, onUpd
   const handleSave = async () => {
     setIsSaving(true);
     try {
+      assertProfileMediaWithinLimit({
+        avatar: formData.avatar,
+        coverImage: formData.coverImage
+      });
+
       const token = localStorage.getItem('token');
       const res = await fetch('/api/users/profile', {
         method: 'PUT',
@@ -48,7 +57,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({ user, onPreview, onUpd
         body: JSON.stringify(formData)
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({ message: 'Failed to update profile' }));
 
       if (!res.ok) {
         alert(data.message || 'Failed to update profile');
@@ -63,7 +72,7 @@ export const EditProfile: React.FC<EditProfileProps> = ({ user, onPreview, onUpd
       setTimeout(() => setShowSuccess(false), 3000);
     } catch (error) {
       console.error('Update profile error:', error);
-      alert('Network error during profile update');
+      alert(error instanceof Error ? error.message : 'Network error during profile update');
     } finally {
       setIsSaving(false);
     }
@@ -91,14 +100,27 @@ export const EditProfile: React.FC<EditProfileProps> = ({ user, onPreview, onUpd
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>, field: 'avatar' | 'coverImage') => {
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>, field: 'avatar' | 'coverImage') => {
     const file = event.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData(prev => ({ ...prev, [field]: reader.result as string }));
-      };
-      reader.readAsDataURL(file);
+    if (!file) {
+      return;
+    }
+
+    try {
+      const optimizedImage = await optimizeProfileImage(file, field);
+      const nextFormData = { ...formData, [field]: optimizedImage };
+
+      assertProfileMediaWithinLimit({
+        avatar: nextFormData.avatar,
+        coverImage: nextFormData.coverImage
+      });
+
+      setFormData(nextFormData);
+    } catch (error) {
+      console.error(`${field} upload error:`, error);
+      alert(error instanceof Error ? error.message : 'Failed to process the selected image.');
+    } finally {
+      event.target.value = '';
     }
   };
 

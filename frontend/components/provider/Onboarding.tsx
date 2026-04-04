@@ -3,6 +3,11 @@ import React, { useRef, useState } from 'react';
 import { User } from '../../types';
 import { Button, Card, cn } from '../Layout';
 import {
+   assertProfileMediaWithinLimit,
+   MAX_PORTFOLIO_ITEMS,
+   optimizeProfileImage
+} from '../../utils/profileImages';
+import {
    Camera, UploadCloud, ChevronRight, ChevronLeft, MapPin,
    Globe, Mail, Phone, User as UserIcon, Briefcase, CheckCircle,
    Star, Image as ImageIcon, X, Badge as BadgeIcon
@@ -32,16 +37,26 @@ const StepIdentity: React.FC<StepProps> = ({ formData, updateField }) => {
    const avatarInputRef = useRef<HTMLInputElement>(null);
    const coverInputRef = useRef<HTMLInputElement>(null);
 
-   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>, field: 'avatar' | 'coverImage') => {
+   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>, field: 'avatar' | 'coverImage') => {
       const file = event.target.files?.[0];
       if (!file) {
          return;
       }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-         updateField(field, reader.result as string);
-      };
-      reader.readAsDataURL(file);
+
+      try {
+         const optimizedImage = await optimizeProfileImage(file, field);
+         assertProfileMediaWithinLimit({
+            avatar: field === 'avatar' ? optimizedImage : formData.avatar,
+            coverImage: field === 'coverImage' ? optimizedImage : formData.coverImage,
+            portfolio: formData.portfolio,
+         });
+         updateField(field, optimizedImage);
+      } catch (error) {
+         console.error(`${field} upload error:`, error);
+         alert(error instanceof Error ? error.message : 'Failed to process the selected image.');
+      } finally {
+         event.target.value = '';
+      }
    };
 
    return (
@@ -133,6 +148,7 @@ const StepIdentity: React.FC<StepProps> = ({ formData, updateField }) => {
                   <option value="Electrical">Electrical</option>
                   <option value="Gardening">Gardening</option>
                   <option value="Tutoring">Tutoring</option>
+                  <option value="photography">Photography</option>
                   <option value="IT services">IT services</option>
                   <option value="Digital marketing & Strategy">Digital Marketing & Strategy</option>
                   <option value="Web development & Programming">Web Development & Programming</option>
@@ -240,13 +256,6 @@ const StepPortfolio: React.FC<StepProps> = ({ formData, updateField }) => {
    const portfolioInputRef = useRef<HTMLInputElement>(null);
    const portfolioItems = formData.portfolio || [];
 
-   const readFileAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = () => reject(new Error('Failed to read file'));
-      reader.readAsDataURL(file);
-   });
-
    const handlePortfolioUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
       const files = event.target.files;
       if (!files || files.length === 0) {
@@ -254,11 +263,26 @@ const StepPortfolio: React.FC<StepProps> = ({ formData, updateField }) => {
       }
 
       try {
-         const nextImages = await Promise.all(Array.from(files).map(readFileAsDataUrl));
-         updateField('portfolio', [...portfolioItems, ...nextImages]);
+         if (portfolioItems.length + files.length > MAX_PORTFOLIO_ITEMS) {
+            throw new Error(`You can upload up to ${MAX_PORTFOLIO_ITEMS} portfolio images.`);
+         }
+
+         const selectedFiles = Array.from(files) as File[];
+         const nextImages = await Promise.all(
+            selectedFiles.map((file) => optimizeProfileImage(file, 'portfolio'))
+         );
+         const nextPortfolio = [...portfolioItems, ...nextImages];
+
+         assertProfileMediaWithinLimit({
+            avatar: formData.avatar,
+            coverImage: formData.coverImage,
+            portfolio: nextPortfolio,
+         });
+
+         updateField('portfolio', nextPortfolio);
       } catch (error) {
          console.error('Portfolio upload error:', error);
-         alert('Failed to read one or more images.');
+         alert(error instanceof Error ? error.message : 'Failed to process one or more images.');
       } finally {
          if (portfolioInputRef.current) {
             portfolioInputRef.current.value = '';
@@ -407,6 +431,7 @@ const PreviewCard: React.FC<{ formData: Partial<User> }> = ({ formData }) => (
 // --- Main Component ---
 export const Onboarding: React.FC<OnboardingProps> = ({ user, onComplete }) => {
    const [currentStep, setCurrentStep] = useState(0);
+   const [isSubmitting, setIsSubmitting] = useState(false);
    const [formData, setFormData] = useState<Partial<User>>({
       name: user.name || '',
       tagline: '',
@@ -426,6 +451,13 @@ export const Onboarding: React.FC<OnboardingProps> = ({ user, onComplete }) => {
          setCurrentStep(prev => prev + 1);
       } else {
          try {
+            setIsSubmitting(true);
+            assertProfileMediaWithinLimit({
+               avatar: formData.avatar,
+               coverImage: formData.coverImage,
+               portfolio: formData.portfolio,
+            });
+
             const token = localStorage.getItem('token');
             const res = await fetch('/api/users/profile', {
                method: 'PUT',
@@ -436,7 +468,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ user, onComplete }) => {
                body: JSON.stringify(formData)
             });
 
-            const data = await res.json();
+            const data = await res.json().catch(() => ({ message: 'Failed to update profile' }));
 
             if (!res.ok) {
                alert(data.message || 'Failed to update profile');
@@ -448,7 +480,9 @@ export const Onboarding: React.FC<OnboardingProps> = ({ user, onComplete }) => {
             onComplete(data);
          } catch (error) {
             console.error('Onboarding update error:', error);
-            alert('Network error during onboarding');
+            alert(error instanceof Error ? error.message : 'Network error during onboarding');
+         } finally {
+            setIsSubmitting(false);
          }
       }
    };
@@ -505,8 +539,8 @@ export const Onboarding: React.FC<OnboardingProps> = ({ user, onComplete }) => {
                   >
                      <ChevronLeft size={18} className="mr-2" /> Back
                   </Button>
-                  <Button onClick={handleNext} className="px-8">
-                     {currentStep === STEPS.length - 1 ? 'Finish Setup' : 'Continue'}
+                  <Button onClick={handleNext} className="px-8" disabled={isSubmitting}>
+                     {currentStep === STEPS.length - 1 ? (isSubmitting ? 'Saving...' : 'Finish Setup') : 'Continue'}
                      {currentStep !== STEPS.length - 1 && <ChevronRight size={18} className="ml-2" />}
                   </Button>
                </div>
