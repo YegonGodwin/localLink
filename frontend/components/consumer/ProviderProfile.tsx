@@ -3,6 +3,23 @@ import { Service } from '../../types';
 import { Card, Button, Badge, Modal, cn } from '../Layout';
 import { ArrowLeft, Star, Phone, Mail, Globe, MapPin, CheckCircle, PlusCircle, Loader2, Smartphone, ShieldCheck, CreditCard, ChevronRight } from 'lucide-react';
 
+interface Review {
+  _id: string;
+  rating: number;
+  comment: string;
+  consumer: {
+    _id: string;
+    name: string;
+    avatar: string;
+  };
+  service: {
+    _id: string;
+    title: string;
+    image: string;
+  };
+  createdAt: string;
+}
+
 interface ProviderProfileProps {
   service: Service;
   onBack: () => void;
@@ -38,6 +55,15 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [providerServices, setProviderServices] = useState<Service[]>([]);
   const [servicesLoading, setServicesLoading] = useState(true);
+  const [providerPortfolio, setProviderPortfolio] = useState<string[]>([]);
+  const [providerBio, setProviderBio] = useState<string>('');
+  const [providerPhone, setProviderPhone] = useState<string>('');
+  const [providerWebsite, setProviderWebsite] = useState<string>('');
+  const [providerAddress, setProviderAddress] = useState<string>('');
+  const [providerCoverImage, setProviderCoverImage] = useState<string>('');
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [providerReviews, setProviderReviews] = useState<Review[]>([]);
+  const [reviewsLoading, setReviewsLoading] = useState(false);
 
   // Time slots for scheduling
   const timeSlots = [
@@ -86,6 +112,67 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
 
     fetchProviderServices();
   }, [selectedService]);
+
+  // Load provider profile data (portfolio, bio, contact info)
+  useEffect(() => {
+    const fetchProviderProfile = async () => {
+      try {
+        setProfileLoading(true);
+        const res = await fetch(`/api/users/providers/${selectedService.providerId}`);
+        const data = await res.json();
+
+        if (res.ok && data) {
+          setProviderPortfolio(Array.isArray(data.portfolio) ? data.portfolio : []);
+          setProviderBio(data.bio || '');
+          setProviderPhone(data.phone || '');
+          setProviderWebsite(data.website || '');
+          setProviderAddress(data.address || '');
+          setProviderCoverImage(data.coverImage || '');
+        }
+      } catch (error) {
+        console.error('Error fetching provider profile:', error);
+      } finally {
+        setProfileLoading(false);
+      }
+    };
+
+    fetchProviderProfile();
+  }, [selectedService]);
+
+  // Load provider reviews
+  useEffect(() => {
+    const fetchProviderReviews = async () => {
+      try {
+        setReviewsLoading(true);
+        const res = await fetch(`/api/reviews/provider/${selectedService.providerId}`);
+        const data = await res.json();
+
+        if (res.ok && Array.isArray(data)) {
+          setProviderReviews(data);
+        }
+      } catch (error) {
+        console.error('Error fetching provider reviews:', error);
+      } finally {
+        setReviewsLoading(false);
+      }
+    };
+
+    fetchProviderReviews();
+  }, [selectedService]);
+
+  // Helper function to format date
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffTime = Math.abs(now.getTime() - date.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 1) return 'Today';
+    if (diffDays === 2) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
 
   // Calculate cart details
   const selectedServicesList = providerServices.filter(s => bookingCart.includes(s.id));
@@ -398,16 +485,33 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
           {activeTab === 'Portfolio' && (
             <div id="portfolio" className="animate-in fade-in duration-300">
               <h3 className="text-xl font-bold text-white mb-4">Portfolio</h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {[1, 2, 3, 4, 5, 6].map((i) => (
-                  <div key={i} className="aspect-square rounded-xl overflow-hidden bg-slate-800 relative group">
-                    <img src={`https://picsum.photos/seed/${selectedService.id + i}/400/400`} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <Button variant="ghost" className="text-white border border-white/30 hover:bg-white/20">View</Button>
+              {profileLoading ? (
+                <div className="flex items-center gap-2 text-slate-400 py-8">
+                  <Loader2 size={18} className="animate-spin text-blue-500" />
+                  Loading portfolio...
+                </div>
+              ) : providerPortfolio.length > 0 ? (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  {providerPortfolio.map((image, index) => (
+                    <div key={index} className="aspect-square rounded-xl overflow-hidden bg-slate-800 relative group">
+                      <img src={image} alt={`Portfolio ${index + 1}`} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <Button variant="ghost" className="text-white border border-white/30 hover:bg-white/20">View</Button>
+                      </div>
                     </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-16">
+                  <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg className="w-8 h-8 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
                   </div>
-                ))}
-              </div>
+                  <p className="text-slate-400 mb-2">No portfolio images uploaded yet</p>
+                  <p className="text-sm text-slate-500">This provider hasn't added portfolio images</p>
+                </div>
+              )}
             </div>
           )}
 
@@ -415,25 +519,57 @@ export const ProviderProfile: React.FC<ProviderProfileProps> = ({
           {activeTab === 'Reviews' && (
             <div id="reviews" className="animate-in fade-in duration-300">
               <h3 className="text-xl font-bold text-white mb-4">Customer Reviews</h3>
-              <div className="space-y-4">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center font-bold text-slate-500">U{i}</div>
-                        <div>
-                          <h5 className="font-bold text-white">Satisfied Customer</h5>
-                          <p className="text-xs text-slate-500">2 days ago</p>
+              {reviewsLoading ? (
+                <div className="flex items-center gap-2 text-slate-400 py-8">
+                  <Loader2 size={18} className="animate-spin text-blue-500" />
+                  Loading reviews...
+                </div>
+              ) : providerReviews.length > 0 ? (
+                <div className="space-y-4">
+                  {providerReviews.map((review) => (
+                    <div key={review._id} className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-slate-800 overflow-hidden">
+                            {review.consumer?.avatar ? (
+                              <img src={review.consumer.avatar} alt={review.consumer.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center font-bold text-slate-500">
+                                {review.consumer?.name?.charAt(0) || 'U'}
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <h5 className="font-bold text-white">{review.consumer?.name || 'Anonymous'}</h5>
+                            <p className="text-xs text-slate-500">{formatDate(review.createdAt)}</p>
+                          </div>
+                        </div>
+                        <div className="flex text-yellow-400">
+                          {[1, 2, 3, 4, 5].map(s => (
+                            <Star key={s} size={14} fill={s <= review.rating ? 'currentColor' : 'none'} />
+                          ))}
                         </div>
                       </div>
-                      <div className="flex text-yellow-400">
-                        {[1, 2, 3, 4, 5].map(s => <Star key={s} size={14} fill="currentColor" />)}
-                      </div>
+                      {review.service && (
+                        <p className="text-xs text-slate-500 mb-2">
+                          Service: <span className="text-slate-400">{review.service.title}</span>
+                        </p>
+                      )}
+                      {review.comment && (
+                        <p className="text-slate-400 text-sm">{review.comment}</p>
+                      )}
                     </div>
-                    <p className="text-slate-400 text-sm">Great service! The provider was on time, professional, and did an excellent job. Would definitely recommend.</p>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-16">
+                  <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Star className="w-8 h-8 text-slate-500" />
                   </div>
-                ))}
-              </div>
+                  <p className="text-slate-400 mb-2">No reviews yet</p>
+                  <p className="text-sm text-slate-500">This provider hasn't received any reviews</p>
+                </div>
+              )}
             </div>
           )}
         </div>
