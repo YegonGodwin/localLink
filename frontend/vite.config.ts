@@ -12,11 +12,15 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: 'http://localhost:5000',
           changeOrigin: true,
+          secure: false,
+          timeout: 60000,
+          proxyTimeout: 60000,
         },
         '/socket.io': {
           target: 'http://localhost:5000',
           changeOrigin: true,
           ws: true,
+          secure: false,
         },
       },
     },

@@ -273,7 +273,13 @@ export default function App() {
       const data = await res.json();
 
       if (!res.ok) {
-        alert(data.message || 'Signup failed');
+        // Handle validation errors properly
+        if (data.errors) {
+          const errorMessages = Object.values(data.errors).join(', ');
+          alert(errorMessages);
+        } else {
+          alert(data.message || 'Signup failed');
+        }
         return;
       }
 
@@ -301,7 +307,11 @@ export default function App() {
       }
     } catch (error) {
       console.error('Signup error:', error);
-      alert('Network error during signup');
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        alert('Cannot connect to backend server. Please ensure the backend is running on port 5000.');
+      } else {
+        alert('Network error during signup. Please try again.');
+      }
     }
   };
 
