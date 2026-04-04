@@ -106,3 +106,15 @@ export const getServiceReviews = async (req, res) => {
 
     res.json(reviews);
 };
+
+// @desc    Get reviews for a provider (all their services)
+// @route   GET /api/reviews/provider/:providerId
+// @access  Public
+export const getProviderReviews = async (req, res) => {
+    const reviews = await Review.find({ provider: req.params.providerId })
+        .populate("consumer", "name avatar")
+        .populate("service", "title image")
+        .sort({ createdAt: -1 });
+
+    res.json(reviews);
+};

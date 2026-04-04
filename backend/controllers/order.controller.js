@@ -1,13 +1,18 @@
 import Order from "../models/Order.model.js";
 
+const getRefId = (ref) => {
+    if (!ref) return null;
+    if (typeof ref === "object" && ref._id) return ref._id.toString();
+    return ref.toString();
+};
+
 const canAccessOrder = (order, user) => {
     if (!order || !user) return false;
     if (user.role === "ADMIN") return true;
     const userId = user._id.toString();
-    return (
-        order.consumer?.toString() === userId ||
-        order.provider?.toString() === userId
-    );
+    const consumerId = getRefId(order.consumer);
+    const providerId = getRefId(order.provider);
+    return consumerId === userId || providerId === userId;
 };
 
 // @desc    Get orders for the current user
