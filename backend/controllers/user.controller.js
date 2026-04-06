@@ -93,6 +93,7 @@ export const updateUserProfile = async (req, res) => {
         user.name = req.body.name || user.name;
         user.email = req.body.email || user.email;
         user.avatar = req.body.avatar || user.avatar;
+        user.location = req.body.location || user.location;
         user.tagline = req.body.tagline || user.tagline;
         user.bio = req.body.bio || user.bio;
         user.phone = req.body.phone || user.phone;

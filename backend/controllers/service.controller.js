@@ -7,10 +7,6 @@ export const getServices = async (req, res) => {
     const services = await Service.find({}).populate("provider", "name avatar");
     res.json(services);
 };
-
-// @desc    Get service by ID
-// @route   GET /api/services/:id
-// @access  Public
 export const getServiceById = async (req, res) => {
     const service = await Service.findById(req.params.id).populate("provider", "name avatar");
 

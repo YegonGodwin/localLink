@@ -9,14 +9,16 @@ import { ServiceRequests } from './ServiceRequests';
 import { ProviderProfile } from './ProviderProfile';
 import { Payments } from './Payments';
 import { OrdersPage } from '../orders/OrdersPage';
+import { ProfileSettings } from './ProfileSettings';
 
 interface ConsumerProps {
   user: User;
   currentView: string;
+  onUpdate: (updatedUser: User) => void;
   onMessageProvider: (userId: string) => void;
 }
 
-export const ConsumerDashboard: React.FC<ConsumerProps> = ({ user, currentView, onMessageProvider }) => {
+export const ConsumerDashboard: React.FC<ConsumerProps> = ({ user, currentView, onUpdate, onMessageProvider }) => {
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [bookingCart, setBookingCart] = useState<string[]>([]);
   const [showBookingModal, setShowBookingModal] = useState(false);
@@ -63,6 +65,10 @@ export const ConsumerDashboard: React.FC<ConsumerProps> = ({ user, currentView, 
 
   if (currentView === 'payments') {
     return <Payments />;
+  }
+
+  if (currentView === 'profile') {
+    return <ProfileSettings user={user} onUpdate={onUpdate} />;
   }
 
   if (currentView === 'orders') {

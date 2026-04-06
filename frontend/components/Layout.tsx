@@ -397,6 +397,7 @@ export const Layout: React.FC<LayoutProps> = ({ user, onLogout, currentView, onC
           { id: 'orders', label: 'Orders', icon: ClipboardList },
           { id: 'messages', label: 'Messages', icon: MessageSquare, count: unreadMessagesCount },
           { id: 'payments', label: 'Payments', icon: CreditCard },
+          { id: 'profile', label: 'Profile Settings', icon: UserIcon },
         ];
       case 'PROVIDER':
         return [

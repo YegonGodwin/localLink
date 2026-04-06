@@ -352,7 +352,7 @@ export default function App() {
 
     switch (currentUser.role) {
       case 'CONSUMER':
-        return <ConsumerDashboard user={currentUser} currentView={currentView} onMessageProvider={handleMessageUser} />;
+        return <ConsumerDashboard user={currentUser} currentView={currentView} onUpdate={handleProfileUpdate} onMessageProvider={handleMessageUser} />;
       case 'PROVIDER':
         return <ProviderDashboard user={currentUser} currentView={currentView} onUpdate={handleProfileUpdate} onMessageUser={handleMessageUser} />;
       case 'ADMIN':

@@ -64,9 +64,29 @@ export const EditProfile: React.FC<EditProfileProps> = ({ user, onPreview, onUpd
         return;
       }
 
+      // Map backend response to frontend User type consistently
+      const updatedUser: User = {
+        id: data._id,
+        name: data.name,
+        email: data.email,
+        role: data.role,
+        avatar: data.avatar,
+        location: data.location,
+        status: data.status,
+        verified: data.verified,
+        tagline: data.tagline,
+        bio: data.bio,
+        phone: data.phone,
+        address: data.address,
+        category: data.category,
+        website: data.website,
+        coverImage: data.coverImage,
+        portfolio: data.portfolio
+      };
+
       // Update local storage and parent state
-      localStorage.setItem('user', JSON.stringify(data));
-      onUpdate(data);
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      onUpdate(updatedUser);
 
       setShowSuccess(true);
       setTimeout(() => setShowSuccess(false), 3000);
