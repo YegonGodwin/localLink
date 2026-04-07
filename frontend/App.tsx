@@ -7,7 +7,67 @@ import { AdminDashboard } from './components/admin';
 import { ChatInterface } from './components/Chat';
 import { LandingPage } from './components/LandingPage';
 import { User, UserRole } from './types';
-import { ShieldCheck, Briefcase, User as UserIcon, X, Check } from 'lucide-react';
+import { ShieldCheck, Briefcase, User as UserIcon, X, Check, Mail, RefreshCw } from 'lucide-react';
+
+// Email verification pending screen
+const EmailVerificationPending = ({ email, onBackToLogin }: { email: string, onBackToLogin: () => void }) => {
+  const [resending, setResending] = useState(false);
+  const [resent, setResent] = useState(false);
+
+  const handleResend = async () => {
+    setResending(true);
+    try {
+      await fetch('/api/auth/resend-verification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      setResent(true);
+    } finally {
+      setResending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] bg-slate-950 flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center shadow-2xl">
+        <div className="w-16 h-16 bg-blue-600/10 border border-blue-500/30 rounded-full flex items-center justify-center mx-auto mb-6">
+          <Mail size={28} className="text-blue-400" />
+        </div>
+        <h2 className="text-2xl font-bold text-white mb-2">Check your inbox</h2>
+        <p className="text-slate-400 mb-2 text-sm leading-relaxed">
+          We sent a verification link to
+        </p>
+        <p className="text-white font-semibold mb-6 text-sm">{email}</p>
+        <p className="text-slate-500 text-xs mb-8 leading-relaxed">
+          Click the link in the email to activate your account. The link expires in 24 hours.
+        </p>
+
+        {resent ? (
+          <div className="flex items-center justify-center gap-2 text-emerald-400 text-sm mb-6">
+            <Check size={16} /> Verification email resent
+          </div>
+        ) : (
+          <button
+            onClick={handleResend}
+            disabled={resending}
+            className="flex items-center gap-2 mx-auto text-sm text-slate-400 hover:text-white transition-colors mb-6 disabled:opacity-50"
+          >
+            <RefreshCw size={14} className={resending ? 'animate-spin' : ''} />
+            {resending ? 'Resending...' : "Didn't get it? Resend email"}
+          </button>
+        )}
+
+        <button
+          onClick={onBackToLogin}
+          className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
+        >
+          Back to sign in
+        </button>
+      </div>
+    </div>
+  );
+};
 
 // Enhanced Login/Signup Modal with Overflow Handling
 const LoginModal = ({
@@ -203,6 +263,8 @@ export default function App() {
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isOnboarding, setIsOnboarding] = useState(false);
   const [activeChatTarget, setActiveChatTarget] = useState<string | null>(null);
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState<string | null>(null);
+  const [verificationStatus, setVerificationStatus] = useState<'success' | 'error' | null>(null);
   const [authConfig, setAuthConfig] = useState<{ isSignup: boolean, role: UserRole }>({
     isSignup: false,
     role: 'CONSUMER'
@@ -224,6 +286,28 @@ export default function App() {
     }
   }, []);
 
+  // Handle email verification link: /verify-email?token=...
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const verifyToken = params.get('token');
+    const isVerifyPath = window.location.pathname === '/verify-email';
+
+    if (isVerifyPath && verifyToken) {
+      fetch(`/api/auth/verify-email/${verifyToken}`)
+        .then((res) => res.json())
+        .then((data) => {
+          // Clear the URL params
+          window.history.replaceState({}, '', '/');
+          if (data.message?.includes('successfully')) {
+            setVerificationStatus('success');
+          } else {
+            setVerificationStatus('error');
+          }
+        })
+        .catch(() => setVerificationStatus('error'));
+    }
+  }, []);
+
   const handleLogin = async (email: string, password?: string) => {
     try {
       const res = await fetch('/api/auth/login', {
@@ -235,7 +319,13 @@ export default function App() {
       const data = await res.json();
 
       if (!res.ok) {
-        alert(data.message || 'Login failed');
+        if (res.status === 403) {
+          // Unverified email — close modal and show pending screen
+          setIsLoginOpen(false);
+          setPendingVerificationEmail(email);
+        } else {
+          alert(data.message || 'Login failed');
+        }
         return;
       }
 
@@ -283,28 +373,10 @@ export default function App() {
         return;
       }
 
-      const newUser: User = {
-        id: data._id,
-        name: data.name,
-        email: data.email,
-        role: data.role,
-        location: data.location,
-        avatar: data.avatar || 'https://randomuser.me/api/portraits/lego/1.jpg',
-        status: data.status || 'ACTIVE',
-        verified: data.verified || false
-      };
-
-      setCurrentUser(newUser);
-      localStorage.setItem('user', JSON.stringify(newUser));
-      localStorage.setItem('token', data.token);
+      // Registration successful — backend now sends verification email
+      // Don't log the user in yet; show the pending verification screen
       setIsLoginOpen(false);
-
-      if (role === 'PROVIDER') {
-        setIsOnboarding(true);
-      } else {
-        setIsOnboarding(false);
-        setCurrentView('dashboard');
-      }
+      setPendingVerificationEmail(email);
     } catch (error) {
       console.error('Signup error:', error);
       if (error instanceof TypeError && error.message.includes('fetch')) {
@@ -361,6 +433,18 @@ export default function App() {
         return <div>Unknown Role</div>;
     }
   };
+
+  if (pendingVerificationEmail) {
+    return (
+      <EmailVerificationPending
+        email={pendingVerificationEmail}
+        onBackToLogin={() => {
+          setPendingVerificationEmail(null);
+          setIsLoginOpen(true);
+        }}
+      />
+    );
+  }
 
   if (!currentUser) {
     return (
