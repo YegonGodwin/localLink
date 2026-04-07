@@ -264,7 +264,6 @@ export default function App() {
   const [isOnboarding, setIsOnboarding] = useState(false);
   const [activeChatTarget, setActiveChatTarget] = useState<string | null>(null);
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState<string | null>(null);
-  const [verificationStatus, setVerificationStatus] = useState<'success' | 'error' | null>(null);
   const [authConfig, setAuthConfig] = useState<{ isSignup: boolean, role: UserRole }>({
     isSignup: false,
     role: 'CONSUMER'
@@ -296,15 +295,16 @@ export default function App() {
       fetch(`/api/auth/verify-email/${verifyToken}`)
         .then((res) => res.json())
         .then((data) => {
-          // Clear the URL params
           window.history.replaceState({}, '', '/');
           if (data.message?.includes('successfully')) {
-            setVerificationStatus('success');
+            // Open the sign-in modal directly
+            setAuthConfig({ isSignup: false, role: 'CONSUMER' });
+            setIsLoginOpen(true);
           } else {
-            setVerificationStatus('error');
+            alert('Verification failed: ' + (data.message || 'Invalid or expired link.'));
           }
         })
-        .catch(() => setVerificationStatus('error'));
+        .catch(() => alert('Something went wrong during verification. Please try again.'));
     }
   }, []);
 

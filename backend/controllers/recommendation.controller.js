@@ -22,7 +22,7 @@ export const getRecommendations = async (req, res) => {
     // Fetch actual service details from database
     const serviceIds = recommendations.recommendations.map(r => r.service_id);
     const services = await Service.find({ _id: { $in: serviceIds } })
-      .populate('provider', 'name email profileImage')
+      .populate('provider', 'name avatar')
       .lean();
 
     // Merge recommendations with service details
@@ -50,10 +50,10 @@ export const getRecommendations = async (req, res) => {
     usedFallback = true;
     
     // Fallback to popular services if recommendation service fails
-    const fallbackServices = await Service.find({ isActive: true })
-      .sort({ bookingCount: -1 })
+    const fallbackServices = await Service.find({})
+      .sort({ rating: -1, reviews: -1 })
       .limit(parseInt(req.query.limit) || 10)
-      .populate('provider', 'name email profileImage')
+      .populate('provider', 'name avatar')
       .lean();
 
     res.json({
@@ -93,10 +93,9 @@ export const getSimilarServices = async (req, res) => {
     // Fetch actual service details
     const serviceIds = recommendations.recommendations.map(r => r.service_id);
     const services = await Service.find({ 
-      _id: { $in: serviceIds },
-      isActive: true 
+      _id: { $in: serviceIds }
     })
-      .populate('provider', 'name email profileImage')
+      .populate('provider', 'name avatar')
       .lean();
 
     const enrichedRecommendations = recommendations.recommendations.map(rec => {
@@ -118,11 +117,10 @@ export const getSimilarServices = async (req, res) => {
     const service = await Service.findById(req.params.serviceId);
     const fallbackServices = await Service.find({
       category: service?.category,
-      _id: { $ne: req.params.serviceId },
-      isActive: true
+      _id: { $ne: req.params.serviceId }
     })
       .limit(parseInt(req.query.limit) || 10)
-      .populate('provider', 'name email profileImage')
+      .populate('provider', 'name avatar')
       .lean();
 
     res.json({
@@ -148,10 +146,9 @@ export const getPersonalizedRecommendations = async (req, res) => {
     // Fetch actual service details
     const serviceIds = recommendations.recommendations.map(r => r.service_id);
     const services = await Service.find({ 
-      _id: { $in: serviceIds },
-      isActive: true 
+      _id: { $in: serviceIds }
     })
-      .populate('provider', 'name email profileImage')
+      .populate('provider', 'name avatar')
       .lean();
 
     const enrichedRecommendations = recommendations.recommendations.map(rec => {
@@ -182,11 +179,10 @@ export const getPersonalizedRecommendations = async (req, res) => {
     const categories = [...new Set(bookedServices.map(s => s.category))];
     
     const fallbackServices = await Service.find({
-      category: { $in: categories },
-      isActive: true
+      category: { $in: categories }
     })
       .limit(parseInt(req.query.limit) || 10)
-      .populate('provider', 'name email profileImage')
+      .populate('provider', 'name avatar')
       .lean();
 
     res.json({

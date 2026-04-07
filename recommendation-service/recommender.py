@@ -208,14 +208,5 @@ class RecommendationEngine:
         return self._get_fallback_recommendations(user_id, limit)
     
     def _get_fallback_recommendations(self, identifier: str, limit: int) -> List[Dict]:
-        """Fallback recommendations when models aren't loaded"""
-        # This is a placeholder - replace with actual fallback logic
-        # Could query popular services from database
-        return [
-            {
-                "service_id": f"service_{i}",
-                "score": round(0.9 - (i * 0.05), 2),
-                "reason": "Popular service"
-            }
-            for i in range(limit)
-        ]
+        """Return empty list — backend will use its own DB fallback"""
+        return []

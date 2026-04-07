@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Service, User } from '../../types';
 import { Button, cn, Modal, Badge } from '../Layout';
 import { Search, MapPin, Filter, Heart, Star, MessageSquare, ArrowRight, ExternalLink } from 'lucide-react';
+import recommendationService from '../../services/recommendationService';
 
 interface ExploreServicesProps {
    user?: User;
@@ -161,6 +162,35 @@ export const ExploreServices: React.FC<ExploreServicesProps> = ({ user, onSelect
    const fetchServices = async () => {
       try {
          setLoading(true);
+
+         // Try recommendation API first (requires auth token)
+         const token = localStorage.getItem('token');
+         if (token) {
+            try {
+               const recResult = await recommendationService.getRecommendations(20);
+               if (recResult.success && recResult.data.length > 0) {
+                  const mappedServices = recResult.data.map((s: any) => ({
+                     id: s._id,
+                     providerId: s.provider?._id || '',
+                     providerName: s.provider?.name || 'Local Pro',
+                     providerAvatar: s.provider?.avatar || 'https://randomuser.me/api/portraits/lego/1.jpg',
+                     title: s.title,
+                     description: s.description,
+                     category: s.category,
+                     price: s.price,
+                     rating: s.rating || 0,
+                     reviews: s.reviews || 0,
+                     image: s.image
+                  }));
+                  setServices(mappedServices);
+                  return;
+               }
+            } catch {
+               // recommendation service unavailable — fall through to plain fetch
+            }
+         }
+
+         // Fallback: plain service listing
          const res = await fetch('/api/services');
          const data = await res.json();
          if (res.ok) {
