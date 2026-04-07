@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Layout, Button, cn } from './components/Layout';
 import { ConsumerDashboard } from './components/consumer/index';
 import { ProviderDashboard } from './components/provider/index';
@@ -264,6 +264,7 @@ export default function App() {
   const [isOnboarding, setIsOnboarding] = useState(false);
   const [activeChatTarget, setActiveChatTarget] = useState<string | null>(null);
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState<string | null>(null);
+  const verificationStarted = useRef(false);
   const [authConfig, setAuthConfig] = useState<{ isSignup: boolean, role: UserRole }>({
     isSignup: false,
     role: 'CONSUMER'
@@ -291,7 +292,8 @@ export default function App() {
     const verifyToken = params.get('token');
     const isVerifyPath = window.location.pathname === '/verify-email';
 
-    if (isVerifyPath && verifyToken) {
+    if (isVerifyPath && verifyToken && !verificationStarted.current) {
+      verificationStarted.current = true;
       fetch(`/api/auth/verify-email/${verifyToken}`)
         .then((res) => res.json())
         .then((data) => {
