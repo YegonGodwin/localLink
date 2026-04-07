@@ -24,10 +24,12 @@ class RecommendationResponse(BaseModel):
     service_id: str
     score: float
     reason: Optional[str] = None
+    model_config = {"protected_namespaces": ()}
 
 class RecommendationsResult(BaseModel):
     recommendations: List[RecommendationResponse]
     model_used: str
+    model_config = {"protected_namespaces": ()}
 
 @app.get("/")
 def root():
@@ -41,7 +43,7 @@ def health_check():
 def get_service_recommendations(
     user_id: str,
     limit: int = 10,
-    model: str = "hybrid"
+    model: str = "collaborative"
 ):
     """Get personalized service recommendations for a user"""
     try:

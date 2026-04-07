@@ -2,6 +2,7 @@ import recommendationClient from '../utils/recommendationClient.js';
 import recommendationMonitor from '../utils/recommendationMonitor.js';
 import Service from '../models/Service.model.js';
 import Booking from '../models/Booking.model.js';
+import mongoose from 'mongoose';
 
 // Get recommended services for a user
 export const getRecommendations = async (req, res) => {
@@ -19,21 +20,47 @@ export const getRecommendations = async (req, res) => {
       model
     );
 
-    // Fetch actual service details from database
-    const serviceIds = recommendations.recommendations.map(r => r.service_id);
-    const services = await Service.find({ _id: { $in: serviceIds } })
-      .populate('provider', 'name avatar')
-      .lean();
+    // Filter valid MongoDB ObjectIds only
+    const validRecommendations = recommendations.recommendations.filter(r => 
+      mongoose.Types.ObjectId.isValid(r.service_id)
+    );
 
-    // Merge recommendations with service details
-    const enrichedRecommendations = recommendations.recommendations.map(rec => {
-      const service = services.find(s => s._id.toString() === rec.service_id);
-      return {
-        ...service,
-        recommendationScore: rec.score,
-        recommendationReason: rec.reason
-      };
-    }).filter(r => r._id); // Filter out services that don't exist
+    let enrichedRecommendations = [];
+    
+    if (validRecommendations.length > 0) {
+      // Fetch actual service details from database
+      const serviceIds = validRecommendations.map(r => r.service_id);
+      const services = await Service.find({ _id: { $in: serviceIds } })
+        .populate('provider', 'name avatar')
+        .lean();
+
+      // Merge recommendations with service details
+      enrichedRecommendations = validRecommendations.map(rec => {
+        const service = services.find(s => s._id.toString() === rec.service_id);
+        return service ? {
+          ...service,
+          recommendationScore: rec.score,
+          recommendationReason: rec.reason
+        } : null;
+      }).filter(r => r !== null);
+    }
+
+    // If we have no valid results after filtering, use the fallback
+    if (enrichedRecommendations.length === 0) {
+      usedFallback = true;
+      const fallbackServices = await Service.find({})
+        .sort({ rating: -1, reviews: -1 })
+        .limit(parseInt(req.query.limit) || 10)
+        .populate('provider', 'name avatar')
+        .lean();
+
+      return res.json({
+        success: true,
+        data: fallbackServices,
+        modelUsed: 'fallback',
+        message: 'Using fallback recommendations'
+      });
+    }
 
     res.json({
       success: true,
@@ -90,21 +117,26 @@ export const getSimilarServices = async (req, res) => {
       parseInt(limit)
     );
 
+    // Filter valid MongoDB ObjectIds only
+    const validRecommendations = recommendations.recommendations.filter(r => 
+      mongoose.Types.ObjectId.isValid(r.service_id)
+    );
+
     // Fetch actual service details
-    const serviceIds = recommendations.recommendations.map(r => r.service_id);
+    const serviceIds = validRecommendations.map(r => r.service_id);
     const services = await Service.find({ 
       _id: { $in: serviceIds }
     })
       .populate('provider', 'name avatar')
       .lean();
 
-    const enrichedRecommendations = recommendations.recommendations.map(rec => {
+    const enrichedRecommendations = validRecommendations.map(rec => {
       const service = services.find(s => s._id.toString() === rec.service_id);
-      return {
+      return service ? {
         ...service,
         similarityScore: rec.score
-      };
-    }).filter(r => r._id);
+      } : null;
+    }).filter(r => r !== null);
 
     res.json({
       success: true,
@@ -143,21 +175,26 @@ export const getPersonalizedRecommendations = async (req, res) => {
       parseInt(limit)
     );
 
+    // Filter valid MongoDB ObjectIds only
+    const validRecommendations = recommendations.recommendations.filter(r => 
+      mongoose.Types.ObjectId.isValid(r.service_id)
+    );
+
     // Fetch actual service details
-    const serviceIds = recommendations.recommendations.map(r => r.service_id);
+    const serviceIds = validRecommendations.map(r => r.service_id);
     const services = await Service.find({ 
       _id: { $in: serviceIds }
     })
       .populate('provider', 'name avatar')
       .lean();
 
-    const enrichedRecommendations = recommendations.recommendations.map(rec => {
+    const enrichedRecommendations = validRecommendations.map(rec => {
       const service = services.find(s => s._id.toString() === rec.service_id);
-      return {
+      return service ? {
         ...service,
         recommendationScore: rec.score
-      };
-    }).filter(r => r._id);
+      } : null;
+    }).filter(r => r !== null);
 
     res.json({
       success: true,

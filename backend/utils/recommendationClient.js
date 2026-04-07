@@ -2,7 +2,7 @@ import axios from 'axios';
 
 class RecommendationClient {
   constructor() {
-    this.baseURL = process.env.RECOMMENDATION_SERVICE_URL || 'http://localhost:8001';
+    this.baseURL = process.env.RECOMMENDATION_SERVICE_URL || 'http://localhost:8000';
     this.timeout = 5000; // 5 seconds timeout
     
     this.client = axios.create({

@@ -8,7 +8,6 @@ class RecommendationEngine:
         self.models_dir = "models"
         self.content_model = None
         self.collaborative_model = None
-        self.hybrid_model = None
         
         self._load_models()
     
@@ -22,10 +21,6 @@ class RecommendationEngine:
         collab_path = os.path.join(self.models_dir, "collaborative.pkl")
         if os.path.exists(collab_path):
             self.collaborative_model = self._safe_load_pickle(collab_path, "collaborative")
-        
-        hybrid_path = os.path.join(self.models_dir, "hybrid.pkl")
-        if os.path.exists(hybrid_path):
-            self.hybrid_model = self._safe_load_pickle(hybrid_path, "hybrid")
     
     def _safe_load_pickle(self, filepath: str, model_name: str):
         """Safely load model file using joblib"""
@@ -78,20 +73,22 @@ class RecommendationEngine:
         """Check which models are loaded"""
         return {
             "content_based": self.content_model is not None,
-            "collaborative": self.collaborative_model is not None,
-            "hybrid": self.hybrid_model is not None
+            "collaborative": self.collaborative_model is not None
         }
     
-    def get_recommendations(self, user_id: str, limit: int = 10, model_type: str = "hybrid") -> List[Dict]:
+    def get_recommendations(self, user_id: str, limit: int = 10, model_type: str = "collaborative") -> List[Dict]:
         """Get recommendations using specified model"""
         
-        if model_type == "hybrid" and self.hybrid_model:
+        if model_type == "hybrid":
             return self._get_hybrid_recommendations(user_id, limit)
         elif model_type == "collaborative" and self.collaborative_model:
             return self._get_collaborative_recommendations(user_id, limit)
         elif model_type == "content" and self.content_model:
             return self._get_content_recommendations(user_id, limit)
         else:
+            # Try collaborative as first fallback if model_type is not available
+            if self.collaborative_model:
+                return self._get_collaborative_recommendations(user_id, limit)
             # Fallback to mock recommendations
             return self._get_fallback_recommendations(user_id, limit)
     
@@ -115,40 +112,43 @@ class RecommendationEngine:
             return self._get_collaborative_recommendations(user_id, limit)
         
         return self._get_fallback_recommendations(user_id, limit)
-    
+
     def _get_hybrid_recommendations(self, user_id: str, limit: int) -> List[Dict]:
-        """Hybrid model predictions"""
-        if not self.hybrid_model:
-            return self._get_fallback_recommendations(user_id, limit)
-        
+        """Hybrid logic: combine content and collaborative without needing a hybrid.pkl"""
         try:
-            # Your hybrid model structure - implement based on your training
-            # For now, combine content and collaborative if available
-            if self.content_model and self.collaborative_model:
-                content_recs = self._get_content_recommendations(user_id, limit * 2)
-                collab_recs = self._get_collaborative_recommendations(user_id, limit * 2)
+            content_recs = []
+            collab_recs = []
+
+            if self.content_model:
+                content_recs = self._get_content_recommendations(user_id, limit)
+            
+            if self.collaborative_model:
+                collab_recs = self._get_collaborative_recommendations(user_id, limit)
+            
+            # If both failed to get specific results, return fallback
+            if not content_recs and not collab_recs:
+                return self._get_fallback_recommendations(user_id, limit)
+
+            # Simple hybrid: merge and deduplicate
+            seen = set()
+            hybrid_recs = []
+            
+            # Alternate between content and collaborative to keep it balanced
+            for i in range(max(len(content_recs), len(collab_recs))):
+                if i < len(content_recs) and content_recs[i]['service_id'] not in seen:
+                    hybrid_recs.append(content_recs[i])
+                    seen.add(content_recs[i]['service_id'])
+                if i < len(collab_recs) and collab_recs[i]['service_id'] not in seen:
+                    hybrid_recs.append(collab_recs[i])
+                    seen.add(collab_recs[i]['service_id'])
                 
-                # Simple hybrid: merge and deduplicate
-                seen = set()
-                hybrid_recs = []
-                
-                # Alternate between content and collaborative
-                for i in range(max(len(content_recs), len(collab_recs))):
-                    if i < len(content_recs) and content_recs[i]['service_id'] not in seen:
-                        hybrid_recs.append(content_recs[i])
-                        seen.add(content_recs[i]['service_id'])
-                    if i < len(collab_recs) and collab_recs[i]['service_id'] not in seen:
-                        hybrid_recs.append(collab_recs[i])
-                        seen.add(collab_recs[i]['service_id'])
-                    
-                    if len(hybrid_recs) >= limit:
-                        break
-                
-                return hybrid_recs[:limit]
+                if len(hybrid_recs) >= limit:
+                    break
+            
+            return hybrid_recs[:limit]
         except Exception as e:
-            print(f"Error in hybrid recommendations: {e}")
-        
-        return self._get_fallback_recommendations(user_id, limit)
+            print(f"Error in hybrid logic: {e}")
+            return self._get_fallback_recommendations(user_id, limit)
     
     def _get_collaborative_recommendations(self, user_id: str, limit: int) -> List[Dict]:
         """Collaborative filtering predictions"""
@@ -208,5 +208,25 @@ class RecommendationEngine:
         return self._get_fallback_recommendations(user_id, limit)
     
     def _get_fallback_recommendations(self, identifier: str, limit: int) -> List[Dict]:
-        """Return empty list — backend will use its own DB fallback"""
+        """Return popular items as fallback if specific user/service is not in model"""
+        try:
+            # If we have a collaborative model, we can find the globally popular items
+            if self.collaborative_model:
+                import pandas as pd
+                svd_predictions = self.collaborative_model.get('svd_predictions_df')
+                if svd_predictions is not None and isinstance(svd_predictions, pd.DataFrame):
+                    # Average rating per service
+                    avg_ratings = svd_predictions.mean(axis=0).sort_values(ascending=False).head(limit)
+                    
+                    recommendations = []
+                    for service_id, score in avg_ratings.items():
+                        recommendations.append({
+                            'service_id': str(service_id),
+                            'score': round(float(score), 4),
+                            'reason': 'Trending service in your area'
+                        })
+                    return recommendations
+        except Exception as e:
+            print(f"Error generating popularity fallback: {e}")
+            
         return []
