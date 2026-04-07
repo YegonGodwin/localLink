@@ -267,18 +267,23 @@ export const CreateService: React.FC<CreateServiceProps> = ({ onCancel, onSucces
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-300">Amount</label>
+            <label className="text-sm font-medium text-slate-300">
+              Amount <span className="text-slate-500 font-normal text-xs">(KES)</span>
+            </label>
             <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-bold">Ksh </span>
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-semibold pointer-events-none">
+                Ksh
+              </span>
               <input
                 type="number"
-                placeholder="0.00"
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-8 pr-16 py-3 text-white focus:border-blue-500 outline-none transition-all placeholder-slate-600"
+                min="0"
+                placeholder="0"
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-12 pr-4 py-3 text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all placeholder-slate-600 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 value={formData.price}
                 onChange={(e) => setFormData(prev => ({ ...prev, price: e.target.value }))}
               />
-              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 text-sm font-medium">USD</span>
             </div>
+            <p className="text-xs text-slate-500">Set your rate in Kenyan Shillings.</p>
           </div>
 
           <div className="space-y-2">

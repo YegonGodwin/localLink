@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Message from "../models/Chat.model.js";
 import User from "../models/User.model.js";
 import { getIO } from "../sockets/io.instance.js";
@@ -25,11 +26,39 @@ export const getMessages = async (req, res) => {
 export const sendMessage = async (req, res) => {
     const { receiverId, text, isImage } = req.body;
     const senderId = req.user._id;
+    const clientId = typeof req.body.clientId === "string" ? req.body.clientId.trim() : "";
+    const trimmedText = typeof text === "string" ? text.trim() : "";
+
+    if (!receiverId) {
+        res.status(400);
+        throw new Error("receiverId is required");
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(String(receiverId))) {
+        res.status(400);
+        throw new Error("Invalid receiverId");
+    }
+
+    if (!trimmedText) {
+        res.status(400);
+        throw new Error("Message text is required");
+    }
+
+    if (String(senderId) === String(receiverId)) {
+        res.status(400);
+        throw new Error("You cannot message yourself");
+    }
+
+    const receiverExists = await User.exists({ _id: receiverId });
+    if (!receiverExists) {
+        res.status(404);
+        throw new Error("Recipient not found");
+    }
 
     const message = new Message({
         sender: senderId,
         receiver: receiverId,
-        text,
+        text: trimmedText,
         isImage: isImage || false,
     });
 
@@ -48,6 +77,7 @@ export const sendMessage = async (req, res) => {
             text: savedMessage.text,
             isImage: savedMessage.isImage,
             createdAt,
+            clientId: clientId || undefined,
         };
 
         io.to(receiverRoom).emit("chat:message", livePayload);
@@ -64,7 +94,12 @@ export const sendMessage = async (req, res) => {
         });
     }
 
-    res.status(201).json(savedMessage);
+    const responseMessage = savedMessage.toObject();
+    if (clientId) {
+        responseMessage.clientId = clientId;
+    }
+
+    res.status(201).json(responseMessage);
 };
 
 // @desc    Get chat contacts

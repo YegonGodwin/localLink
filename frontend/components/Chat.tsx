@@ -10,12 +10,50 @@ interface ChatInterfaceProps {
   initialTargetId?: string | null;
 }
 
+const formatMessageTime = (value?: string | Date) => {
+  const date = value ? new Date(value) : new Date();
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+};
+
+const toChatMessage = (message: any): ChatMessage => ({
+  id: String(message?._id || message?.id || ''),
+  senderId: String(message?.sender || message?.senderId || ''),
+  text: String(message?.text || ''),
+  timestamp: formatMessageTime(message?.createdAt || message?.timestamp),
+  isImage: Boolean(message?.isImage),
+  clientId: typeof message?.clientId === 'string' ? message.clientId : undefined,
+  deliveryState: 'sent',
+  createdAt: typeof message?.createdAt === 'string' ? message.createdAt : new Date().toISOString(),
+});
+
+const mergeMessage = (messages: ChatMessage[], incoming: ChatMessage) => {
+  const existingIndex = messages.findIndex((message) => {
+    if (incoming.id && message.id === incoming.id) {
+      return true;
+    }
+    return Boolean(incoming.clientId) && message.clientId === incoming.clientId;
+  });
+
+  if (existingIndex === -1) {
+    return [...messages, incoming];
+  }
+
+  const nextMessages = [...messages];
+  nextMessages[existingIndex] = {
+    ...nextMessages[existingIndex],
+    ...incoming,
+  };
+  return nextMessages;
+};
+
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, initialTargetId }) => {
   const [contacts, setContacts] = useState<ChatContact[]>([]);
   const [activeChat, setActiveChat] = useState<string | null>(initialTargetId || null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState({ contacts: true, messages: false });
+  const [isSending, setIsSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const activeChatRef = useRef<string | null>(initialTargetId || null);
@@ -29,7 +67,11 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, initialTarge
       const res = await fetch('/api/chat/contacts', {
         headers: { Authorization: `Bearer ${token}` }
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => []);
+      if (!res.ok) {
+        throw new Error(data?.message || 'Unable to load conversations.');
+      }
+
       setContacts(data);
 
       // If we have an initial target but it's not in contacts yet, we might need to fetch its info
@@ -72,18 +114,17 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, initialTarge
       const res = await fetch(`/api/chat/messages/${userId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => []);
+      if (!res.ok) {
+        throw new Error(data?.message || 'Unable to load messages.');
+      }
 
-      // Map backend message format to frontend ChatMessage type
-      const formattedMessages = data.map((m: any) => ({
-        id: m._id,
-        senderId: m.sender,
-        text: m.text,
-        timestamp: new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        isImage: m.isImage
-      }));
+      const formattedMessages = Array.isArray(data) ? data.map((message: any) => toChatMessage(message)) : [];
 
-      setMessages(formattedMessages);
+      setMessages((prev) => {
+        const pendingMessages = prev.filter((message) => message.deliveryState === 'sending' && message.threadId === userId);
+        return formattedMessages.reduce((nextMessages, message) => mergeMessage(nextMessages, message), pendingMessages);
+      });
 
       // Mark as read
       await fetch(`/api/chat/read/${userId}`, {
@@ -98,10 +139,31 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, initialTarge
   };
 
   const handleSend = async () => {
-    if (!input.trim() || !activeChat) return;
+    if (!input.trim() || !activeChat || isSending) return;
 
     const text = input.trim();
+    const receiverId = activeChat;
+    const clientId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    const optimisticMessage: ChatMessage = {
+      id: `temp-${clientId}`,
+      senderId: user.id,
+      text,
+      timestamp: formatMessageTime(),
+      isImage: false,
+      clientId,
+      deliveryState: 'sending',
+      createdAt: new Date().toISOString(),
+      threadId: receiverId,
+    };
+
     setInput('');
+    setSendError(null);
+    setIsSending(true);
+    setMessages((prev) => mergeMessage(prev, optimisticMessage));
 
     try {
       const token = localStorage.getItem('token');
@@ -112,24 +174,27 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, initialTarge
           Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({
-          receiverId: activeChat,
-          text: text
+          receiverId,
+          text,
+          clientId,
         })
       });
 
-      if (res.ok) {
-        const newMessage = await res.json();
-        setMessages(prev => [...prev, {
-          id: newMessage._id,
-          senderId: newMessage.sender,
-          text: newMessage.text,
-          timestamp: new Date(newMessage.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          isImage: newMessage.isImage
-        }]);
-        fetchContacts(); // Refresh last message in contacts list
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.message || 'Failed to send message.');
       }
+
+      setMessages((prev) => mergeMessage(prev, toChatMessage(data)));
+      fetchContacts();
     } catch (error) {
       console.error('Error sending message:', error);
+      const message = error instanceof Error ? error.message : 'Failed to send message.';
+      setSendError(message);
+      setMessages((prev) => prev.filter((messageItem) => messageItem.clientId !== clientId));
+      setInput((current) => current || text);
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -171,19 +236,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, initialTarge
       const isActiveThread = activeChatRef.current === otherId;
       if (isActiveThread) {
         setMessages((prev) => {
-          if (prev.some((msg) => msg.id === message._id)) {
-            return prev;
-          }
-          return [
-            ...prev,
-            {
-              id: message._id,
-              senderId,
-              text: message.text,
-              timestamp: new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-              isImage: message.isImage,
-            },
-          ];
+          return mergeMessage(prev, toChatMessage(message));
         });
       }
 
@@ -212,6 +265,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, initialTarge
 
   useEffect(() => {
     if (activeChat) {
+      setSendError(null);
       fetchMessages(activeChat);
 
       // Fallback polling in case realtime transport is unavailable
@@ -220,6 +274,17 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, initialTarge
         fetchMessages(activeChat);
         fetchContacts();
       }, 5000);
+      return () => {
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
+      };
+    }
+
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
     }
   }, [activeChat]);
 
@@ -324,6 +389,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, initialTarge
                       <div className={cn("max-w-[85%] md:max-w-[70%]", isMe ? "items-end" : "items-start")}>
                         <div className={cn(
                           "rounded-2xl px-4 py-3 shadow-md relative",
+                          msg.deliveryState === 'sending' && "opacity-80",
                           isMe
                             ? "bg-blue-600 text-white rounded-br-none"
                             : "bg-[#1f2937] text-slate-200 rounded-bl-none border border-slate-800"
@@ -337,7 +403,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, initialTarge
                           )}
                           <div className={cn("flex items-center gap-1.5 mt-1 justify-end opacity-60")}>
                             <span className="text-[10px] font-medium tracking-wide">{msg.timestamp}</span>
-                            {isMe && <CheckCheck size={14} className="text-blue-100" />}
+                            {isMe && msg.deliveryState === 'sending' ? (
+                              <Loader2 size={12} className="animate-spin text-blue-100" />
+                            ) : null}
+                            {isMe && msg.deliveryState !== 'sending' ? <CheckCheck size={14} className="text-blue-100" /> : null}
                           </div>
                         </div>
                       </div>
@@ -367,7 +436,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, initialTarge
                     placeholder="Type a message..."
                     className="w-full bg-slate-950 border border-slate-800 rounded-full pl-5 pr-12 py-3 text-sm text-white focus:border-blue-500 outline-none transition-all placeholder-slate-600 shadow-inner"
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter' && input.trim()) {
+                      if (e.key === 'Enter' && input.trim() && !isSending) {
                         handleSend();
                       }
                     }}
@@ -381,15 +450,22 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, initialTarge
                   onClick={handleSend}
                   className={cn(
                     "w-10 h-10 rounded-full transition-all flex items-center justify-center flex-shrink-0 shadow-lg",
-                    input.trim()
+                    input.trim() && !isSending
                       ? "bg-blue-600 text-white hover:bg-blue-500 shadow-blue-900/40"
                       : "bg-slate-800 text-slate-500"
                   )}
-                  disabled={!input.trim()}
+                  disabled={!input.trim() || isSending}
                 >
-                  <Send size={18} className={cn(input.trim() ? "translate-x-0.5" : "")} />
+                  {isSending ? (
+                    <Loader2 size={18} className="animate-spin" />
+                  ) : (
+                    <Send size={18} className={cn(input.trim() ? "translate-x-0.5" : "")} />
+                  )}
                 </button>
               </div>
+              {sendError && (
+                <p className="max-w-4xl mx-auto mt-2 px-2 text-xs text-red-400">{sendError}</p>
+              )}
             </div>
           </div>
         ) : (

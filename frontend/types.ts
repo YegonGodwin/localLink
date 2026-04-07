@@ -132,6 +132,10 @@ export interface ChatMessage {
   text: string;
   timestamp: string;
   isImage?: boolean;
+  clientId?: string;
+  deliveryState?: 'sending' | 'sent' | 'failed';
+  createdAt?: string;
+  threadId?: string;
 }
 
 export interface ChatContact {
